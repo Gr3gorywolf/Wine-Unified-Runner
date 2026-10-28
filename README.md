@@ -74,7 +74,9 @@ El primer `run` sin `--container` crea e inicializa automáticamente un contened
 
 ## Directorios y JSON
 
-La CLI es autocontenida por defecto. La plantilla `defaults.json` queda junto a la CLI y su copia editable, ya adaptada al SO, se guarda como `config/defaults.json`. Runtimes, componentes, descargas, configuración y contenedores permanecen todos dentro de la carpeta compilada `dist/`. No escribe en `~/.local/share`, `~/Library/Application Support` ni directorios globales del sistema.
+La CLI es autocontenida por defecto. La plantilla `defaults.json` queda junto a la CLI y su copia editable, ya adaptada al SO, se guarda como `config/defaults.json`. Runtimes, componentes, descargas, configuración, perfil de usuario y contenedores permanecen todos dentro de la carpeta compilada `dist/`. No escribe en `~/.local/share`, `~/Library/Application Support` ni directorios globales del sistema.
+
+Todos los runtimes usan el mismo usuario de Windows, `user`. Cada prefijo expone `C:\\users\\user` mediante un enlace relativo a `dist/user/`, por lo que `AppData`, `Documents`, partidas guardadas y demás datos del perfil se comparten entre contenedores. Al preparar un prefijo antiguo, la CLI copia a ese perfil compartido los archivos que todavía no existan, conserva el perfil original como respaldo y no sigue los enlaces que Wine había creado hacia el home de macOS o Linux.
 
 `proton-cli install-recommended` siempre toma su plan de ese `config/defaults.json`: instala el runtime definido en `container.runtime` y sólo los componentes cuyo campo `enabled` sea `true`. Así, cambiar el JSON (o usar `proton-cli defaults set`) cambia la siguiente instalación recomendada. `--dry-run` muestra el plan sin descargar nada. En macOS, el selector genérico `dxvk` se resuelve como `dxvk-macos`; en Linux se resuelve como DXVK normal.
 
@@ -85,6 +87,10 @@ También puedes usar `--home /ruta` en un único comando. La estructura resultan
 ```text
 dist/
   defaults.json
+  user/
+    AppData/
+    Documents/
+    Saved Games/
   config/
     config.json
     defaults.json

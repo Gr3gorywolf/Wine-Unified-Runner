@@ -19,6 +19,7 @@ export function getPaths(): Paths {
 
   return {
     root,
+    user: join(root, 'user'),
     containers: join(root, 'containers'),
     runtimes: join(root, 'runtimes'),
     components: join(root, 'components'),
@@ -36,6 +37,7 @@ export function getPaths(): Paths {
 export async function ensurePaths(paths: Paths): Promise<void> {
   await Promise.all([
     mkdir(paths.root, { recursive: true }),
+    mkdir(paths.user, { recursive: true }),
     mkdir(paths.containers, { recursive: true }),
     mkdir(paths.runtimes, { recursive: true }),
     mkdir(paths.components, { recursive: true }),

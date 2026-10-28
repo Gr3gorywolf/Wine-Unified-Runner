@@ -1,20 +1,22 @@
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { containerManifestFile, loadAppConfig, loadContainer, loadDefaults, newContainer, parseRuntimeReference, parseSetExpression, saveContainer, setAtPath } from '../src/config.js'
 import { removeComponent } from '../src/components.js'
 import { buildContainer, createContainer, removeContainer } from '../src/containers.js'
 import { buildLaunchEnvironment, runRuntime } from '../src/launch.js'
 import { getPaths, readJson, writeJson } from '../src/paths.js'
+import { ensureSharedUserProfile } from '../src/profile.js'
 import { findRuntimeBinary, removeRuntime, runtimeId } from '../src/runtime.js'
 import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from '../src/types.js'
 
 function portablePaths(root: string): Paths {
   return {
     root,
+    user: join(root, 'user'),
     containers: join(root, 'containers'),
     runtimes: join(root, 'runtimes'),
     components: join(root, 'components'),
@@ -178,6 +180,42 @@ test('runRuntime returns after its primary process exits even when a child keeps
   }, ['-c', '(sleep 2) & exit 0'], { inheritStdio: false })
   assert.equal(result.code, 0)
   assert.ok(performance.now() - started < 1_000)
+})
+
+test('all prefixes link the same Wine username to the shared portable user directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'proton-cli-shared-user-'))
+  const paths = portablePaths(root)
+  const runtime = {
+    id: 'wine-staging-macos--test',
+    source: 'wine-staging-macos',
+    version: 'test',
+    kind: 'wine',
+    path: '/tmp/runtime',
+    bin: '/tmp/runtime/wine',
+    installedAt: '2026-01-01T00:00:00.000Z',
+    release: { date: '2026-01-01', download: 'https://example.invalid/runtime', notesUrl: 'https://example.invalid' }
+  } satisfies InstalledRuntime
+  try {
+    const first = newContainer('first', testDefaults, paths)
+    const second = newContainer('second', testDefaults, paths)
+    const legacySave = join(first.prefix, 'drive_c', 'users', 'old-name', 'AppData', 'LocalLow', 'Game', 'save.dat')
+    await mkdir(dirname(legacySave), { recursive: true })
+    await writeFile(legacySave, 'save-data')
+
+    await ensureSharedUserProfile(first, runtime, paths)
+    await ensureSharedUserProfile(second, runtime, paths)
+
+    const firstLink = join(first.prefix, 'drive_c', 'users', 'user')
+    const secondLink = join(second.prefix, 'drive_c', 'users', 'user')
+    assert.equal(resolve(dirname(firstLink), await readlink(firstLink)), paths.user)
+    assert.equal(resolve(dirname(secondLink), await readlink(secondLink)), paths.user)
+    assert.equal(await readFile(join(paths.user, 'AppData', 'LocalLow', 'Game', 'save.dat'), 'utf8'), 'save-data')
+
+    await writeFile(join(firstLink, 'Documents', 'shared.txt'), 'shared')
+    assert.equal(await readFile(join(secondLink, 'Documents', 'shared.txt'), 'utf8'), 'shared')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('remove operations delete only portable managed data and clear the default container', async () => {

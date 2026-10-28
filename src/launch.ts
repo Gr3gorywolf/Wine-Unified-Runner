@@ -5,6 +5,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { ContainerConfig, InstalledRuntime, SpawnResult } from './types.js'
 
+export const SHARED_WINE_USERNAME = 'user'
+
 /**
  * `close` waits for every inherited pipe to close. Wine helper processes can
  * retain those descriptors after the game process exits, leaving a CLI stuck
@@ -41,6 +43,12 @@ export function buildLaunchEnvironment(container: ContainerConfig, runtime: Inst
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
     ...customEnvironment,
+    // Keep the Windows identity stable across Wine, CrossOver, GPTK and
+    // Proton. HOME intentionally remains the real host home; the portable
+    // Windows profile is provided by drive_c/users/user in each prefix.
+    USER: SHARED_WINE_USERNAME,
+    USERNAME: SHARED_WINE_USERNAME,
+    LOGNAME: SHARED_WINE_USERNAME,
     WINEPREFIX: container.prefix,
     WINE_FULLSCREEN_FSR: launch.fsr ? '1' : '0'
   }

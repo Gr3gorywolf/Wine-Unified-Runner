@@ -17,6 +17,7 @@ import {
 import { applyDllComponent, findInstalledComponent, installComponent } from './components.js'
 import { initializePrefix, runRuntime, stopWineServer } from './launch.js'
 import { ensurePaths, getPaths } from './paths.js'
+import { ensureSharedUserProfile } from './profile.js'
 import { findInstalledRuntime, installRuntime } from './runtime.js'
 import { canRunRuntimeOnThisSystem, runtimeSources, sourcesForPlatform } from './sources.js'
 import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from './types.js'
@@ -103,6 +104,7 @@ export async function prepareContainer(container: ContainerConfig, paths = getPa
   const runtime = await resolvedRuntime(container, paths)
   await saveContainer(container, paths)
   await initializePrefix(container, runtime)
+  await ensureSharedUserProfile(container, runtime, paths)
   await prepareWineComponents(container, runtime, paths)
   await prepareRuntimeComponents(container, paths)
   await stopWineServer(container, runtime)

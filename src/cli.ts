@@ -67,7 +67,7 @@ Usage:
   proton-cli defaults set --set PATH=VALUE [--set PATH=VALUE]
   proton-cli run EXECUTABLE [--container NAME] [--cwd DIRECTORY] [-- ARGUMENTS...]
 
-All state lives next to the compiled CLI: runtimes/, components/, containers/, downloads/ and
+All state lives next to the compiled CLI: user/, runtimes/, components/, containers/, downloads/ and
 the JSON files are contained in the same folder. Container files are stored as
 containers/<name>/container.json. Use --home DIRECTORY or PROTON_CLI_HOME only when you
 explicitly want a different portable folder.`
