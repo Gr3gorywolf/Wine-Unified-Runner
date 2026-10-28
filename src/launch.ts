@@ -1,9 +1,27 @@
 import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { ContainerConfig, InstalledRuntime, SpawnResult } from './types.js'
+
+/**
+ * `close` waits for every inherited pipe to close. Wine helper processes can
+ * retain those descriptors after the game process exits, leaving a CLI stuck
+ * at its final line. `exit` is the lifecycle event of the command we started.
+ */
+function waitForProcessExit(child: ChildProcess, errorPrefix: string, closePipes: boolean): Promise<SpawnResult> {
+  return new Promise<SpawnResult>((resolve, reject) => {
+    child.once('error', (error) => reject(new Error(`${errorPrefix}: ${error.message}`)))
+    child.once('exit', (code, signal) => {
+      if (closePipes) {
+        child.stdout?.destroy()
+        child.stderr?.destroy()
+      }
+      resolve({ code, signal })
+    })
+  })
+}
 
 function steamClientPath(): string {
   const configured = process.env.PROTON_CLI_STEAM_ROOT
@@ -89,15 +107,25 @@ export async function runRuntime(
   const args = runtime.kind === 'proton' ? [protonVerb, ...command] : command
   const env = { ...buildLaunchEnvironment(container, runtime, container.name, options.installPath), ...options.extraEnv }
   env.PROTON_VERB = protonVerb
-  return await new Promise<SpawnResult>((resolve, reject) => {
-    const child = spawn(runtime.bin, args, {
-      cwd: options.cwd,
-      env,
-      stdio: options.inheritStdio === false ? 'pipe' : 'inherit'
-    })
-    child.once('error', (error) => reject(new Error(`Could not run ${runtime.bin}: ${error.message}`)))
-    child.once('close', (code, signal) => resolve({ code, signal }))
+  const inheritsStdio = options.inheritStdio !== false
+  const child = spawn(runtime.bin, args, {
+    cwd: options.cwd,
+    env,
+    stdio: inheritsStdio ? 'inherit' : 'pipe'
   })
+  return await waitForProcessExit(child, `Could not run ${runtime.bin}`, !inheritsStdio)
+}
+
+/** Stops background Wine services for this self-contained prefix. */
+export async function stopWineServer(container: ContainerConfig, runtime: InstalledRuntime): Promise<void> {
+  if (!runtime.wineserver || !existsSync(runtime.wineserver)) return
+  const child = spawn(runtime.wineserver, ['-k'], {
+    env: buildLaunchEnvironment(container, runtime),
+    stdio: 'inherit'
+  })
+  // wineserver returns 1 when there is no active server, which is already the
+  // desired state. A cleanup failure must not mask the game's exit status.
+  await waitForProcessExit(child, `Could not stop wineserver for ${container.name}`, false).catch(() => undefined)
 }
 
 export async function initializePrefix(container: ContainerConfig, runtime: InstalledRuntime): Promise<void> {
@@ -114,10 +142,8 @@ export async function initializePrefix(container: ContainerConfig, runtime: Inst
     ? ['run', 'wineboot', '--init']
     : ['wineboot', '--init']
   console.error(`Creating ${container.architecture} prefix for container ${container.name}…`)
-  const result = await new Promise<SpawnResult>((resolve, reject) => {
-    const child = spawn(runtime.bin, args, { env, stdio: 'inherit' })
-    child.once('error', (error) => reject(new Error(`Could not initialize prefix: ${error.message}`)))
-    child.once('close', (code, signal) => resolve({ code, signal }))
-  })
+  const child = spawn(runtime.bin, args, { env, stdio: 'inherit' })
+  const result = await waitForProcessExit(child, 'Could not initialize prefix', false)
   if (result.code !== 0) throw new Error(`Prefix initialization failed with status ${result.code ?? result.signal}`)
+  await stopWineServer(container, runtime)
 }

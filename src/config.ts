@@ -38,7 +38,7 @@ export function isRuntimeSource(value: string): value is RuntimeSource {
 
 export function defaultSourceForPlatform(): RuntimeSource {
   if (process.platform === 'darwin') {
-    return process.arch === 'arm64' ? 'game-porting-toolkit' : 'wine-staging-macos'
+    return process.arch === 'arm64' ? 'wine-crossover' : 'wine-staging-macos'
   }
   return 'ge-proton'
 }
@@ -150,12 +150,20 @@ export function assertContainerName(name: string): void {
 export async function loadContainer(name: string, paths = getPaths()): Promise<ContainerConfig> {
   const file = containerFile(paths, name)
   if (!existsSync(file)) throw new Error(`Container "${name}" does not exist. Create it with: proton-cli container create --name ${name}`)
-  const container = await readJson<ContainerConfig>(file)
+  const raw = await readJson<ContainerConfig>(file)
+  // Older container files cached installed-runtime implementation details.
+  // A container is declarative: only source/version belong in its JSON. Keep
+  // reading old files, but discard those derived fields before using them.
+  const container: ContainerConfig = {
+    ...raw,
+    runtime: declaredRuntime(raw.runtime, file)
+  }
   validateContainer(container, file)
   return container
 }
 
 export async function saveContainer(container: ContainerConfig, paths = getPaths()): Promise<void> {
+  container.runtime = declaredRuntime(container.runtime, `container ${container.name}`)
   validateContainer(container, `container ${container.name}`)
   container.updatedAt = new Date().toISOString()
   await writeJson(containerFile(paths, container.name), container)
@@ -184,6 +192,20 @@ function optionalBoolean(value: unknown, label: string): boolean | undefined {
   if (value === undefined) return undefined
   if (typeof value !== 'boolean') throw new Error(`${label} must be true or false.`)
   return value
+}
+
+/**
+ * Runtime installation data (paths, IDs and kind) is discovered locally every
+ * time a container is prepared. It must never become part of container.json.
+ */
+function declaredRuntime(value: unknown, origin: string): ContainerRuntimeRef {
+  const runtime = objectValue(value, `Container runtime in ${origin}`)
+  const source = runtime.source
+  const version = runtime.version
+  if (typeof source !== 'string' || !isRuntimeSource(source) || typeof version !== 'string' || !version) {
+    throw new Error(`Container runtime is invalid in ${origin}`)
+  }
+  return { source, version }
 }
 
 /**
@@ -340,9 +362,7 @@ function validateContainer(container: ContainerConfig, origin: string): void {
   if (container.schemaVersion !== 1) throw new Error(`Unsupported container schema in ${origin}`)
   assertContainerName(container.name)
   if (!isAbsolute(container.prefix)) throw new Error(`Container prefix must be an absolute path in ${origin}`)
-  if (!container.runtime || !isRuntimeSource(container.runtime.source) || !container.runtime.version) {
-    throw new Error(`Container runtime is invalid in ${origin}`)
-  }
+  declaredRuntime(container.runtime, origin)
   const c = container.components
   if (!c || ![c.dxvk, c.dxvkNvapi, c.vkd3d, c.eacRuntime, c.battleyeRuntime].every((component) => component && typeof component.enabled === 'boolean' && typeof component.version === 'string')) {
     throw new Error(`Container components are invalid in ${origin}`)

@@ -115,6 +115,8 @@ Cada contenedor es independiente: su archivo es `containers/<nombre>/container.j
 }
 ```
 
+La sección `runtime` es siempre declarativa y sólo contiene `source` y `version`; no guarda rutas ni IDs de instalaciones locales. Al crear, construir o ejecutar un contenedor, la CLI busca primero ese runtime en `runtimes/`. Si no está, intenta instalarlo automáticamente y explica el fallo de descarga o de versión antes de iniciar el juego.
+
 También puedes declarar un contenedor sin metadatos ni valores repetidos en `containers/<nombre>/config.json`, y construirlo después con `proton-cli build`. El manifiesto admite sólo `runtime`, `architecture`, `components` y `launch`; los campos que omitas se toman de `config/defaults.json`. El nombre y el prefijo siempre proceden de la carpeta, por lo que no puede escribir fuera de la instalación portátil.
 
 ```json

@@ -4,11 +4,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { containerManifestFile, loadAppConfig, loadDefaults, newContainer, parseRuntimeReference, parseSetExpression, setAtPath } from '../src/config.js'
+import { containerManifestFile, loadAppConfig, loadContainer, loadDefaults, newContainer, parseRuntimeReference, parseSetExpression, saveContainer, setAtPath } from '../src/config.js'
 import { removeComponent } from '../src/components.js'
 import { buildContainer, createContainer, removeContainer } from '../src/containers.js'
-import { buildLaunchEnvironment } from '../src/launch.js'
-import { getPaths, writeJson } from '../src/paths.js'
+import { buildLaunchEnvironment, runRuntime } from '../src/launch.js'
+import { getPaths, readJson, writeJson } from '../src/paths.js'
 import { findRuntimeBinary, removeRuntime, runtimeId } from '../src/runtime.js'
 import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from '../src/types.js'
 
@@ -103,6 +103,81 @@ test('macOS Wine bundles use the command-line loader instead of the Finder launc
   } finally {
     await rm(runtime, { recursive: true, force: true })
   }
+})
+
+test('container runtime references remain declarative when legacy metadata is loaded and saved', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'proton-cli-runtime-ref-'))
+  const paths = portablePaths(root)
+  try {
+    await mkdir(join(paths.containers, 'portable'), { recursive: true })
+    await writeJson(paths.defaults, testDefaults)
+    const container = newContainer('portable', testDefaults, paths)
+    await writeJson(join(paths.containers, 'portable', 'container.json'), {
+      ...container,
+      runtime: {
+        source: 'ge-proton',
+        version: 'latest',
+        id: 'ge-proton--latest',
+        path: '/old-machine/runtimes/ge-proton--latest',
+        kind: 'proton'
+      }
+    })
+
+    const loaded = await loadContainer('portable', paths)
+    assert.deepEqual(loaded.runtime, { source: 'ge-proton', version: 'latest' })
+    await saveContainer(loaded, paths)
+
+    const persisted = await readJson<Record<string, unknown>>(join(paths.containers, 'portable', 'container.json'))
+    assert.deepEqual(persisted.runtime, { source: 'ge-proton', version: 'latest' })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('runRuntime returns after its primary process exits even when a child keeps stdio open', async () => {
+  const started = performance.now()
+  const container = {
+    schemaVersion: 1,
+    name: 'exit-test',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    prefix: '/tmp/proton-cli-exit-test',
+    architecture: 'win64',
+    runtime: { source: 'wine-staging-macos', version: 'test' },
+    components: {
+      dxvk: { enabled: false, version: 'latest' },
+      dxvkNvapi: { enabled: false, version: 'latest' },
+      vkd3d: { enabled: false, version: 'latest' },
+      eacRuntime: { enabled: false, version: 'latest' },
+      battleyeRuntime: { enabled: false, version: 'latest' }
+    },
+    launch: {
+      enableEsync: false,
+      enableFsync: false,
+      enableMsync: false,
+      enableWayland: false,
+      enableHdr: false,
+      enableWow64: false,
+      showFps: false,
+      dxvkFrameRate: null,
+      fsr: false,
+      fsrSharpness: 2,
+      verboseLogs: false,
+      environment: {}
+    }
+  } satisfies ContainerConfig
+  const result = await runRuntime(container, {
+    id: 'test-runtime',
+    source: 'wine-staging-macos',
+    version: 'test',
+    kind: 'wine',
+    path: '/tmp',
+    bin: '/bin/sh',
+    installedAt: '2026-01-01T00:00:00.000Z',
+    release: { date: '2026-01-01', download: 'https://example.invalid/runtime', notesUrl: 'https://example.invalid' }
+  }, ['-c', '(sleep 2) & exit 0'], { inheritStdio: false })
+  assert.equal(result.code, 0)
+  assert.ok(performance.now() - started < 1_000)
 })
 
 test('remove operations delete only portable managed data and clear the default container', async () => {

@@ -15,9 +15,9 @@ import {
   saveContainer
 } from './config.js'
 import { applyDllComponent, findInstalledComponent, installComponent } from './components.js'
-import { initializePrefix, runRuntime } from './launch.js'
+import { initializePrefix, runRuntime, stopWineServer } from './launch.js'
 import { ensurePaths, getPaths } from './paths.js'
-import { findInstalledRuntime, getRuntime } from './runtime.js'
+import { findInstalledRuntime, installRuntime } from './runtime.js'
 import { canRunRuntimeOnThisSystem, runtimeSources, sourcesForPlatform } from './sources.js'
 import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from './types.js'
 
@@ -32,17 +32,15 @@ export async function listContainers(paths = getPaths()): Promise<ContainerConfi
 }
 
 async function resolvedRuntime(container: ContainerConfig, paths: Paths): Promise<InstalledRuntime> {
-  let runtime: InstalledRuntime | undefined
-  if (container.runtime.id) runtime = await findInstalledRuntime(container.runtime.source, container.runtime.version, paths)
-  runtime ||= await getRuntime(container.runtime.source, container.runtime.version, paths)
-  container.runtime = {
-    source: runtime.source,
-    version: runtime.version,
-    id: runtime.id,
-    path: runtime.path,
-    kind: runtime.kind
+  const { source, version } = container.runtime
+  const installed = await findInstalledRuntime(source, version, paths)
+  if (installed) return installed
+  try {
+    return await installRuntime(source, version, false, paths)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Runtime ${source}/${version} is not installed and automatic installation failed: ${message}`)
   }
-  return runtime
 }
 
 async function registerNativeDlls(container: ContainerConfig, runtime: InstalledRuntime, dlls: string[]): Promise<void> {
@@ -107,6 +105,7 @@ export async function prepareContainer(container: ContainerConfig, paths = getPa
   await initializePrefix(container, runtime)
   await prepareWineComponents(container, runtime, paths)
   await prepareRuntimeComponents(container, paths)
+  await stopWineServer(container, runtime)
   return { container, runtime }
 }
 

@@ -91,9 +91,6 @@ export interface LaunchOptions {
 export interface ContainerRuntimeRef {
   source: RuntimeSource
   version: string
-  id?: string
-  path?: string
-  kind?: RuntimeKind
 }
 
 export interface ContainerConfig {
