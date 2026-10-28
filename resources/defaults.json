@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "container": {
+    "runtime": {
+      "source": "ge-proton",
+      "version": "latest"
+    },
+    "architecture": "win64",
+    "components": {
+      "dxvk": { "enabled": true, "version": "latest" },
+      "dxvkNvapi": { "enabled": false, "version": "latest" },
+      "vkd3d": { "enabled": true, "version": "latest" },
+      "eacRuntime": { "enabled": true, "version": "latest" },
+      "battleyeRuntime": { "enabled": true, "version": "latest" }
+    },
+    "launch": {
+      "enableEsync": true,
+      "enableFsync": true,
+      "enableMsync": false,
+      "enableWayland": false,
+      "enableHdr": false,
+      "enableWow64": false,
+      "showFps": false,
+      "dxvkFrameRate": null,
+      "fsr": false,
+      "fsrSharpness": 2,
+      "verboseLogs": false,
+      "environment": {}
+    }
+  }
+}
