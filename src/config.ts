@@ -2,39 +2,24 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
+import { appConfigSchema, containerConfigSchema, containerManifestSchema, containerRuntimeRefSchema, defaultsFileSchema } from './schemas/index.js'
+import { GAME_OVERRIDE_FILE, overrideLaunchBooleanKeys, parseGameOverrides } from './utils/configOverrides.js'
+import { readValidatedJson } from './utils/json.js'
+import { onlyKeys } from './utils/objects.js'
+import { parseWithSchema } from './utils/validation.js'
+export { parseJsonValue, parseSetExpression, setAtPath } from './utils/settings.js'
+export { GAME_OVERRIDE_FILE, parseGameOverrides } from './utils/configOverrides.js'
 import type {
   AppConfig,
   ComponentSelection,
   ContainerConfig,
   ContainerComponents,
   ContainerRuntimeRef,
+  GameOverrides,
   DefaultsFile,
-  LaunchOptions,
   Paths,
   RuntimeSource
-} from './types.js'
-
-export interface ContainerManifest {
-  schemaVersion?: 1
-  runtime?: Partial<Pick<ContainerRuntimeRef, 'source' | 'version'>>
-  architecture?: ContainerConfig['architecture']
-  components?: Partial<{ [Key in keyof ContainerComponents]: Partial<ComponentSelection> }>
-  launch?: Partial<Omit<LaunchOptions, 'environment'>> & { environment?: Record<string, string> }
-}
-
-export interface GameOverrides {
-  containerName?: string
-  runtime?: Partial<ContainerRuntimeRef>
-  components?: Partial<{ [Key in keyof ContainerComponents]: Partial<ComponentSelection> }>
-  launch?: Partial<Omit<LaunchOptions, 'environment'>> & { environment?: Record<string, string> }
-}
-
-export const GAME_OVERRIDE_FILE = 'wur-overrides.ini'
-
-const overrideLaunchBooleanKeys = [
-  'enableEsync', 'enableFsync', 'enableMsync', 'enableWayland', 'enableHdr',
-  'enableWow64', 'showFps', 'fsr', 'verboseLogs'
-] as const
+} from './types/index.js'
 
 const validSources = new Set<RuntimeSource>([
   'ge-proton',
@@ -112,11 +97,10 @@ export async function loadDefaults(paths = getPaths()): Promise<DefaultsFile> {
     } else {
       await writeJson(paths.defaults, nativeDefaults())
     }
-    const bundled = await readJson<DefaultsFile>(paths.defaults)
+    const bundled = await readValidatedJson(paths.defaults, defaultsFileSchema)
     await writeJson(paths.defaults, platformizeDefaults(bundled))
   }
-  const defaults = await readJson<DefaultsFile>(paths.defaults)
-  validateDefaults(defaults, paths.defaults)
+  const defaults = await readValidatedJson(paths.defaults, defaultsFileSchema)
   return defaults
 }
 
@@ -132,8 +116,7 @@ export async function loadAppConfig(paths = getPaths()): Promise<AppConfig> {
     await writeJson(paths.appConfig, config)
     return config
   }
-  const config = await readJson<AppConfig>(paths.appConfig)
-  if (config.schemaVersion !== 1) throw new Error(`Unsupported config schema in ${paths.appConfig}`)
+  const config = await readValidatedJson(paths.appConfig, appConfigSchema)
   return config
 }
 
@@ -159,100 +142,6 @@ export function gameOverrideFile(executable: string): string {
   return join(dirname(executable), GAME_OVERRIDE_FILE)
 }
 
-function overrideError(file: string, line: number, message: string): Error {
-  return new Error(`${file}:${line}: ${message}`)
-}
-
-function parseOverrideBoolean(value: string, file: string, line: number): boolean {
-  if (value === 'true') return true
-  if (value === 'false') return false
-  throw overrideError(file, line, 'Expected true or false.')
-}
-
-function parseOverrideNumber(value: string, file: string, line: number): number {
-  const number = Number(value)
-  if (!Number.isFinite(number)) throw overrideError(file, line, 'Expected a finite number.')
-  return number
-}
-
-/** Parses the intentionally small INI surface used for one game's launch. */
-export function parseGameOverrides(contents: string, file = GAME_OVERRIDE_FILE): GameOverrides {
-  const overrides: GameOverrides = {}
-  let section = ''
-  const componentKeys = new Set<keyof ContainerComponents>(['dxvk', 'dxvkNvapi', 'vkd3d', 'eacRuntime', 'battleyeRuntime'])
-  for (const [index, rawLine] of contents.split(/\r?\n/u).entries()) {
-    const line = index + 1
-    const text = rawLine.trim()
-    if (!text || text.startsWith(';') || text.startsWith('#')) continue
-    const sectionMatch = /^\[([^\]]+)]$/.exec(text)
-    if (sectionMatch) {
-      section = sectionMatch[1].trim().toLowerCase()
-      if (!['container', 'runtime', 'components', 'launch', 'environment'].includes(section)) {
-        throw overrideError(file, line, `Unknown section [${sectionMatch[1]}].`)
-      }
-      continue
-    }
-    const equals = text.indexOf('=')
-    if (equals < 1) throw overrideError(file, line, 'Expected key = value.')
-    const key = text.slice(0, equals).trim()
-    const value = text.slice(equals + 1).trim()
-    if (!section) throw overrideError(file, line, 'A setting must be inside a section.')
-    if (!value) throw overrideError(file, line, 'A setting value cannot be empty.')
-
-    if (section === 'container') {
-      if (key !== 'name') throw overrideError(file, line, `Unknown [container] setting "${key}".`)
-      assertContainerName(value)
-      overrides.containerName = value
-      continue
-    }
-    if (section === 'runtime') {
-      if (key !== 'source' && key !== 'version') throw overrideError(file, line, `Unknown [runtime] setting "${key}".`)
-      const runtime = overrides.runtime ||= {}
-      if (key === 'source') {
-        if (!isRuntimeSource(value)) throw overrideError(file, line, `Unknown runtime source "${value}".`)
-        runtime.source = value
-      } else {
-        runtime.version = value
-      }
-      continue
-    }
-    if (section === 'components') {
-      const match = /^([A-Za-z][A-Za-z0-9]*)\.(enabled|version)$/.exec(key)
-      if (!match || !componentKeys.has(match[1] as keyof ContainerComponents)) {
-        throw overrideError(file, line, `Expected COMPONENT.enabled or COMPONENT.version, received "${key}".`)
-      }
-      const component = match[1] as keyof ContainerComponents
-      const selection = (overrides.components ||= {})[component] ||= {}
-      if (match[2] === 'enabled') selection.enabled = parseOverrideBoolean(value, file, line)
-      else selection.version = value
-      continue
-    }
-    if (section === 'launch') {
-      if ((overrideLaunchBooleanKeys as readonly string[]).includes(key)) {
-        const launch = overrides.launch ||= {}
-        launch[key as typeof overrideLaunchBooleanKeys[number]] = parseOverrideBoolean(value, file, line)
-        continue
-      }
-      const launch = overrides.launch ||= {}
-      if (key === 'dxvkFrameRate') {
-        launch.dxvkFrameRate = value === 'null' ? null : parseOverrideNumber(value, file, line)
-        continue
-      }
-      if (key === 'fsrSharpness') {
-        launch.fsrSharpness = parseOverrideNumber(value, file, line)
-        continue
-      }
-      throw overrideError(file, line, `Unknown [launch] setting "${key}".`)
-    }
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      throw overrideError(file, line, `Invalid environment variable name "${key}".`)
-    }
-    const environment = (overrides.launch ||= {}).environment ||= {}
-    environment[key] = value
-  }
-  return overrides
-}
-
 /** Creates the editable sidecar when absent, then parses the game's settings. */
 export async function loadGameOverrides(executable: string, paths = getPaths()): Promise<{ file: string; overrides: GameOverrides }> {
   const file = gameOverrideFile(executable)
@@ -263,7 +152,7 @@ export async function loadGameOverrides(executable: string, paths = getPaths()):
     await mkdir(dirname(file), { recursive: true })
     await copyFile(paths.overrideTemplate, file)
   }
-  return { file, overrides: parseGameOverrides(await readFile(file, 'utf8'), file) }
+  return { file, overrides: parseGameOverrides(await readFile(file, 'utf8')) }
 }
 
 /** Applies non-selection overrides to an in-memory container for one launch. */
@@ -309,40 +198,14 @@ export async function loadContainer(name: string, paths = getPaths()): Promise<C
     ...raw,
     runtime: declaredRuntime(raw.runtime, file)
   }
-  validateContainer(container, file)
-  return container
+  return parseWithSchema(containerConfigSchema, container, file)
 }
 
 export async function saveContainer(container: ContainerConfig, paths = getPaths()): Promise<void> {
   container.runtime = declaredRuntime(container.runtime, `container ${container.name}`)
-  validateContainer(container, `container ${container.name}`)
+  parseWithSchema(containerConfigSchema, container, `container ${container.name}`)
   container.updatedAt = new Date().toISOString()
   await writeJson(containerFile(paths, container.name), container)
-}
-
-function objectValue(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`${label} must be a JSON object.`)
-  }
-  return value as Record<string, unknown>
-}
-
-function onlyKeys(value: Record<string, unknown>, allowed: readonly string[], label: string): void {
-  for (const key of Object.keys(value)) {
-    if (!allowed.includes(key)) throw new Error(`${label} contains unsupported field "${key}".`)
-  }
-}
-
-function optionalString(value: unknown, label: string): string | undefined {
-  if (value === undefined) return undefined
-  if (typeof value !== 'string' || !value) throw new Error(`${label} must be a non-empty string.`)
-  return value
-}
-
-function optionalBoolean(value: unknown, label: string): boolean | undefined {
-  if (value === undefined) return undefined
-  if (typeof value !== 'boolean') throw new Error(`${label} must be true or false.`)
-  return value
 }
 
 /**
@@ -350,13 +213,13 @@ function optionalBoolean(value: unknown, label: string): boolean | undefined {
  * time a container is prepared. It must never become part of container.json.
  */
 function declaredRuntime(value: unknown, origin: string): ContainerRuntimeRef {
-  const runtime = objectValue(value, `Container runtime in ${origin}`)
-  const source = runtime.source
-  const version = runtime.version
-  if (typeof source !== 'string' || !isRuntimeSource(source) || typeof version !== 'string' || !version) {
-    throw new Error(`Container runtime is invalid in ${origin}`)
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`Container runtime in ${origin} must be an object.`)
   }
-  return { source, version }
+  const legacy = value as Record<string, unknown>
+  // Runtime metadata (path, id, kind) from older container files is derived
+  // locally and deliberately discarded from the declarative reference.
+  return parseWithSchema(containerRuntimeRefSchema, { source: legacy.source, version: legacy.version }, `Container runtime in ${origin}`)
 }
 
 /**
@@ -365,18 +228,14 @@ function declaredRuntime(value: unknown, origin: string): ContainerRuntimeRef {
  * are never accepted from the manifest, keeping the installation portable.
  */
 export function resolveContainerManifest(raw: unknown, defaults: DefaultsFile): Omit<ContainerConfig, 'schemaVersion' | 'name' | 'createdAt' | 'updatedAt' | 'prefix'> {
-  const manifest = objectValue(raw, 'config.json')
-  onlyKeys(manifest, ['schemaVersion', 'runtime', 'architecture', 'components', 'launch'], 'config.json')
-  if (manifest.schemaVersion !== undefined && manifest.schemaVersion !== 1) {
-    throw new Error('config.json schemaVersion must be 1.')
-  }
+  const manifest = parseWithSchema(containerManifestSchema, raw, 'config.json')
+  if (manifest.schemaVersion !== undefined && manifest.schemaVersion !== 1) throw new Error('config.json schemaVersion must be 1.')
   const resolved = structuredClone(defaults.container)
 
   if (manifest.runtime !== undefined) {
-    const runtime = objectValue(manifest.runtime, 'config.json.runtime')
-    onlyKeys(runtime, ['source', 'version'], 'config.json.runtime')
-    const source = optionalString(runtime.source, 'config.json.runtime.source')
-    const version = optionalString(runtime.version, 'config.json.runtime.version')
+    const runtime = manifest.runtime
+    const source = runtime.source
+    const version = runtime.version
     if (source !== undefined) {
       if (!isRuntimeSource(source)) throw new Error(`config.json.runtime.source is not a known runtime: ${source}`)
       resolved.runtime.source = source
@@ -393,14 +252,13 @@ export function resolveContainerManifest(raw: unknown, defaults: DefaultsFile): 
   }
 
   if (manifest.components !== undefined) {
-    const components = objectValue(manifest.components, 'config.json.components')
+    const components = manifest.components
     const componentNames = Object.keys(resolved.components)
     onlyKeys(components, componentNames, 'config.json.components')
     for (const [name, rawSelection] of Object.entries(components)) {
-      const selection = objectValue(rawSelection, `config.json.components.${name}`)
-      onlyKeys(selection, ['enabled', 'version'], `config.json.components.${name}`)
-      const enabled = optionalBoolean(selection.enabled, `config.json.components.${name}.enabled`)
-      const version = optionalString(selection.version, `config.json.components.${name}.version`)
+      const selection = rawSelection
+      const enabled = selection.enabled
+      const version = selection.version
       const target = resolved.components[name as keyof ContainerComponents]
       if (enabled !== undefined) target.enabled = enabled
       if (version !== undefined) target.version = version
@@ -408,31 +266,21 @@ export function resolveContainerManifest(raw: unknown, defaults: DefaultsFile): 
   }
 
   if (manifest.launch !== undefined) {
-    const launch = objectValue(manifest.launch, 'config.json.launch')
+    const launch = manifest.launch
     const booleanKeys = ['enableEsync', 'enableFsync', 'enableMsync', 'enableWayland', 'enableHdr', 'enableWow64', 'showFps', 'fsr', 'verboseLogs'] as const
     onlyKeys(launch, [...booleanKeys, 'dxvkFrameRate', 'fsrSharpness', 'environment'], 'config.json.launch')
     for (const key of booleanKeys) {
-      const value = optionalBoolean(launch[key], `config.json.launch.${key}`)
+      const value = launch[key]
       if (value !== undefined) resolved.launch[key] = value
     }
     if (launch.dxvkFrameRate !== undefined) {
-      if (launch.dxvkFrameRate !== null && (typeof launch.dxvkFrameRate !== 'number' || !Number.isFinite(launch.dxvkFrameRate))) {
-        throw new Error('config.json.launch.dxvkFrameRate must be a number or null.')
-      }
       resolved.launch.dxvkFrameRate = launch.dxvkFrameRate
     }
     if (launch.fsrSharpness !== undefined) {
-      if (typeof launch.fsrSharpness !== 'number' || !Number.isFinite(launch.fsrSharpness)) {
-        throw new Error('config.json.launch.fsrSharpness must be a number.')
-      }
       resolved.launch.fsrSharpness = launch.fsrSharpness
     }
     if (launch.environment !== undefined) {
-      const environment = objectValue(launch.environment, 'config.json.launch.environment')
-      for (const [key, value] of Object.entries(environment)) {
-        if (typeof value !== 'string') throw new Error(`config.json.launch.environment.${key} must be a string.`)
-      }
-      resolved.launch.environment = { ...resolved.launch.environment, ...environment as Record<string, string> }
+      resolved.launch.environment = { ...resolved.launch.environment, ...launch.environment }
     }
   }
   return resolved
@@ -469,56 +317,12 @@ export function parseRuntimeReference(input: string): { source: RuntimeSource; v
   return { source, version }
 }
 
-export function parseJsonValue(value: string): unknown {
-  try {
-    return JSON.parse(value)
-  } catch {
-    return value
-  }
-}
-
-export function setAtPath(target: Record<string, unknown>, path: string, value: unknown): void {
-  const parts = path.split('.')
-  if (!parts.every((part) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(part))) {
-    throw new Error(`Invalid JSON path "${path}".`)
-  }
-  let cursor: Record<string, unknown> = target
-  for (const part of parts.slice(0, -1)) {
-    const next = cursor[part]
-    if (typeof next !== 'object' || next === null || Array.isArray(next)) cursor[part] = {}
-    cursor = cursor[part] as Record<string, unknown>
-  }
-  cursor[parts.at(-1)!] = value
-}
-
-export function parseSetExpression(expression: string): { path: string; value: unknown } {
-  const equals = expression.indexOf('=')
-  if (equals < 1) throw new Error(`Expected path=value, received "${expression}".`)
-  return { path: expression.slice(0, equals), value: parseJsonValue(expression.slice(equals + 1)) }
-}
-
 function validateDefaults(defaults: DefaultsFile, origin: string): void {
-  if (defaults.schemaVersion !== 1 || !defaults.container) throw new Error(`Unsupported defaults schema in ${origin}`)
-  validateContainer({
-    ...structuredClone(defaults.container),
-    schemaVersion: 1,
-    name: 'validation',
-    createdAt: new Date(0).toISOString(),
-    updatedAt: new Date(0).toISOString(),
-    prefix: '/tmp/validation'
-  }, origin)
+  parseWithSchema(defaultsFileSchema, defaults, origin)
 }
 
 function validateContainer(container: ContainerConfig, origin: string): void {
-  if (container.schemaVersion !== 1) throw new Error(`Unsupported container schema in ${origin}`)
-  assertContainerName(container.name)
+  parseWithSchema(containerConfigSchema, container, origin)
   if (!isAbsolute(container.prefix)) throw new Error(`Container prefix must be an absolute path in ${origin}`)
-  declaredRuntime(container.runtime, origin)
-  const c = container.components
-  if (!c || ![c.dxvk, c.dxvkNvapi, c.vkd3d, c.eacRuntime, c.battleyeRuntime].every((component) => component && typeof component.enabled === 'boolean' && typeof component.version === 'string')) {
-    throw new Error(`Container components are invalid in ${origin}`)
-  }
-  if (!container.launch || typeof container.launch.environment !== 'object' || container.launch.environment === null) {
-    throw new Error(`Container launch settings are invalid in ${origin}`)
-  }
+  assertContainerName(container.name)
 }

@@ -14,7 +14,7 @@ import { isExecutableFallback } from '../src/invocation.js'
 import { getPaths, readJson, writeJson } from '../src/paths.js'
 import { ensureSharedUserProfile } from '../src/profile.js'
 import { findRuntimeBinary, removeRuntime, runtimeId } from '../src/runtime.js'
-import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from '../src/types.js'
+import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from '../src/types/index.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -107,17 +107,21 @@ test('per-game INI overrides are created from the template and apply without cha
   try {
     await mkdir(dirname(executable), { recursive: true })
     await writeFile(executable, '')
-    await writeFile(paths.overrideTemplate, `; template\n[container]\nname = sidecar-container\n[runtime]\nversion = custom-runtime\n[components]\ndxvk.version = 2.4\ndxvkNvapi.enabled = true\n[launch]\nenableHdr = true\ndxvkFrameRate = 60\n[environment]\nDXVK_ASYNC = 1\n`)
+    await writeFile(paths.overrideTemplate, `; template\n[container]\nname = sidecar-container\nignored = value\n[runtime]\nsource = not-a-runtime\nversion = custom-runtime\n[components]\ndxvk.version = 2.4\ndxvkNvapi.enabled = true\nvkd3d.enabled = perhaps\nunknown.enabled = true\n[launch]\nenableHdr = true\nenableFsync = perhaps\ndxvkFrameRate = 60\nfsrSharpness = not-a-number\nunknown = ignored\n[environment]\nDXVK_ASYNC = 1\ninvalid-name = ignored\n[unknown-section]\nvalue = ignored\n`)
 
     const loaded = await loadGameOverrides(executable, paths)
     assert.equal(loaded.file, sidecar)
     assert.equal(loaded.overrides.containerName, 'sidecar-container')
     assert.equal(loaded.overrides.runtime?.version, 'custom-runtime')
+    assert.equal(loaded.overrides.runtime?.source, undefined)
     assert.equal(loaded.overrides.components?.dxvk?.version, '2.4')
     assert.equal(loaded.overrides.components?.dxvkNvapi?.enabled, true)
     assert.equal(loaded.overrides.launch?.enableHdr, true)
     assert.equal(loaded.overrides.launch?.dxvkFrameRate, 60)
+    assert.equal(loaded.overrides.launch?.enableFsync, undefined)
+    assert.equal(loaded.overrides.launch?.fsrSharpness, undefined)
     assert.equal(loaded.overrides.launch?.environment?.DXVK_ASYNC, '1')
+    assert.equal(loaded.overrides.launch?.environment?.['invalid-name'], undefined)
 
     const original = newContainer('base', testDefaults, paths)
     const effective = applyGameOverrides(original, loaded.overrides)

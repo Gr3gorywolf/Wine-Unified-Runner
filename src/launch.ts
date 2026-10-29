@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises'
 import { type ChildProcess, spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { ContainerConfig, InstalledRuntime, SpawnResult } from './types.js'
+import type { ContainerConfig, InstalledRuntime, SpawnResult } from './types/index.js'
 
 export const SHARED_WINE_USERNAME = 'user'
 

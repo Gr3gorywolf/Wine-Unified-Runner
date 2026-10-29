@@ -5,7 +5,9 @@ import { isRuntimeSource } from './config.js'
 import { downloadFile, extractArchive, fetchJson, verifySha512 } from './network.js'
 import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
 import { assetMatchesArchitecture, isArchiveAsset, runtimeSources, sourcesForPlatform } from './sources.js'
-import type { InstallOptions, InstalledRuntime, Paths, RuntimeRelease, RuntimeSource } from './types.js'
+import { installedRuntimeSchema, runtimeReleaseSchema } from './schemas/index.js'
+import { parseWithSchema } from './utils/validation.js'
+import type { InstallOptions, InstalledRuntime, Paths, RuntimeRelease, RuntimeSource } from './types/index.js'
 
 interface GithubAsset {
   name: string
@@ -55,7 +57,7 @@ export async function listReleases(source?: RuntimeSource, limit = 30, includeAl
     const latest = entries[0]
     return latest ? [{ ...latest, version: 'latest', latest: true }, ...entries] : []
   }))
-  return releases.flat()
+  return releases.flat().map((release) => parseWithSchema(runtimeReleaseSchema, release, `runtime ${release.source}/${release.version}`))
 }
 
 export function runtimeId(source: RuntimeSource, version: string): string {
@@ -75,7 +77,7 @@ export async function listInstalledRuntimes(paths = getPaths()): Promise<Install
     const metadata = metadataFile(join(paths.runtimes, entry.name))
     if (!existsSync(metadata)) continue
     try {
-      const runtime = await readJson<InstalledRuntime>(metadata)
+      const runtime = parseWithSchema(installedRuntimeSchema, await readJson<unknown>(metadata), metadata)
       // Older CLI versions selected Contents/MacOS/wine from macOS bundles.
       // That is the Finder-facing application launcher, not the Wine CLI.
       // Repair metadata on discovery so existing self-contained installs are
@@ -220,14 +222,14 @@ export async function installRuntime(
     if (existsSync(destination)) {
       if (!force) {
         options.onProgress?.(100)
-        return await readJson<InstalledRuntime>(metadataFile(destination))
+        return parseWithSchema(installedRuntimeSchema, await readJson<unknown>(metadataFile(destination)), metadataFile(destination))
       }
       await rm(destination, { recursive: true, force: true })
     }
     await rename(staging, destination)
     options.onProgress?.(100)
     if (!options.quiet) console.error(`Installed ${installed.id} in ${destination}`)
-    return installed
+    return parseWithSchema(installedRuntimeSchema, installed, metadataFile(staging))
   } catch (error) {
     await rm(staging, { recursive: true, force: true })
     throw error

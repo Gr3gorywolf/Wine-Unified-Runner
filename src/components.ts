@@ -4,7 +4,9 @@ import { join } from 'node:path'
 import { downloadFile, extractArchive, fetchJson } from './network.js'
 import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
 import { compatibleComponentRecommendations, componentNames, isArchiveAsset } from './sources.js'
-import type { ComponentName, ComponentRelease, InstallOptions, InstalledComponent, Paths } from './types.js'
+import { componentReleaseSchema, installedComponentSchema } from './schemas/index.js'
+import { parseWithSchema } from './utils/validation.js'
+import type { ComponentName, ComponentRelease, InstallOptions, InstalledComponent, Paths } from './types/index.js'
 
 interface GithubAsset {
   name: string
@@ -106,7 +108,7 @@ export async function listComponentReleases(name?: ComponentName, limit = 30, in
       stripComponents: 1
     })
   }
-  return releases
+  return releases.map((release) => parseWithSchema(componentReleaseSchema, release, `component ${release.name}/${release.version}`))
 }
 
 export async function listInstalledComponents(paths = getPaths()): Promise<InstalledComponent[]> {
@@ -119,7 +121,7 @@ export async function listInstalledComponents(paths = getPaths()): Promise<Insta
       if (!entry.isDirectory()) continue
       const file = metadataFile(join(parent, entry.name))
       if (!existsSync(file)) continue
-      try { listed.push(await readJson<InstalledComponent>(file)) } catch { /* omit incomplete install */ }
+      try { listed.push(parseWithSchema(installedComponentSchema, await readJson<unknown>(file), file)) } catch { /* omit incomplete install */ }
     }
   }
   return listed.sort((a, b) => b.installedAt.localeCompare(a.installedAt))
@@ -179,7 +181,7 @@ export async function installComponent(
     if (existsSync(destination)) {
       if (!force) {
         options.onProgress?.(100)
-        return await readJson<InstalledComponent>(metadataFile(destination))
+        return parseWithSchema(installedComponentSchema, await readJson<unknown>(metadataFile(destination)), metadataFile(destination))
       }
       await rm(destination, { recursive: true, force: true })
     }

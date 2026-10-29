@@ -10,12 +10,12 @@ import {
   rm,
   writeFile
 } from 'node:fs/promises'
-import { get } from 'node:https'
 import { arch, platform } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
+import axios from 'axios'
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(scriptDirectory, '..')
@@ -62,28 +62,16 @@ function run(command, args, options = {}) {
   })
 }
 
-function download(url, destination, redirects = 0) {
-  return new Promise((resolvePromise, reject) => {
-    const request = get(url, (response) => {
-      if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-        response.resume()
-        if (redirects >= 5) {
-          reject(new Error(`Too many redirects while downloading ${url}.`))
-          return
-        }
-        const redirected = new URL(response.headers.location, url).toString()
-        download(redirected, destination, redirects + 1).then(resolvePromise, reject)
-        return
-      }
-      if (response.statusCode !== 200) {
-        response.resume()
-        reject(new Error(`Could not download ${url}: HTTP ${response.statusCode}.`))
-        return
-      }
-      pipeline(response, createWriteStream(destination)).then(resolvePromise, reject)
-    })
-    request.once('error', reject)
+async function download(url, destination) {
+  const response = await axios.get(url, {
+    responseType: 'stream',
+    maxRedirects: 5,
+    validateStatus: () => true
   })
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`Could not download ${url}: HTTP ${response.status}.`)
+  }
+  await pipeline(response.data, createWriteStream(destination))
 }
 
 async function ensureDownloaded(url, destination) {

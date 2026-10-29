@@ -20,7 +20,7 @@ import { ensurePaths, getPaths } from './paths.js'
 import { ensureSharedUserProfile } from './profile.js'
 import { findInstalledRuntime, installRuntime } from './runtime.js'
 import { canRunRuntimeOnThisSystem, runtimeSources, sourcesForPlatform } from './sources.js'
-import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from './types.js'
+import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from './types/index.js'
 
 export async function listContainers(paths = getPaths()): Promise<ContainerConfig[]> {
   await ensurePaths(paths)

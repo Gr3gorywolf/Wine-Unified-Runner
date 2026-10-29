@@ -3,6 +3,9 @@ import { createWriteStream } from 'node:fs'
 import { mkdir, readFile, rm } from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
 import { spawn } from 'node:child_process'
+import { PassThrough } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
+import axios from 'axios'
 
 const headers = {
   Accept: 'application/vnd.github+json',
@@ -10,15 +13,29 @@ const headers = {
 }
 
 export async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { headers })
-  if (!response.ok) throw new Error(`Request failed (${response.status}) for ${url}`)
-  return await response.json() as T
+  try {
+    const response = await axios.get<T>(url, { headers })
+    return response.data
+  } catch (error) {
+    throw requestError(error, url)
+  }
 }
 
 export async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, { headers })
-  if (!response.ok) throw new Error(`Request failed (${response.status}) for ${url}`)
-  return await response.text()
+  try {
+    const response = await axios.get<string>(url, { headers, responseType: 'text' })
+    return response.data
+  } catch (error) {
+    throw requestError(error, url)
+  }
+}
+
+function requestError(error: unknown, url: string): Error {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status ?? 'network error'
+    return new Error(`Request failed (${status}) for ${url}`)
+  }
+  return error instanceof Error ? error : new Error(String(error))
 }
 
 export interface DownloadOptions {
@@ -33,16 +50,21 @@ export async function downloadFile(
   options: DownloadOptions = {}
 ): Promise<string> {
   await mkdir(dirname(destination), { recursive: true })
-  const response = await fetch(url, { headers, redirect: 'follow' })
-  if (!response.ok || !response.body) throw new Error(`Download failed (${response.status}) for ${url}`)
+  const response = await axios.get<NodeJS.ReadableStream>(url, {
+    headers,
+    responseType: 'stream',
+    maxRedirects: 5,
+    validateStatus: () => true
+  })
+  if (response.status < 200 || response.status >= 300 || !response.data) {
+    throw new Error(`Download failed (${response.status}) for ${url}`)
+  }
 
-  const total = Number(response.headers.get('content-length') || 0)
+  const total = Number(response.headers['content-length'] || 0)
   const hash = createHash('sha512')
-  const stream = createWriteStream(destination)
   let received = 0
   let lastReport = 0
   let lastProgress = -1
-  let streamFailure: Error | undefined
   const reportProgress = (progress: number) => {
     const normalized = Math.min(100, Math.max(0, Math.floor(progress)))
     if (normalized === lastProgress) return
@@ -50,44 +72,26 @@ export async function downloadFile(
     options.onProgress?.(normalized)
   }
   reportProgress(0)
-  stream.on('error', (error) => { streamFailure ||= error })
-  try {
-    for await (const part of response.body as unknown as AsyncIterable<Uint8Array>) {
-      if (streamFailure) throw streamFailure
-      const chunk = Buffer.from(part)
-      received += chunk.length
-      hash.update(chunk)
-      if (!stream.write(chunk)) await new Promise<void>((resolve, reject) => {
-        const onDrain = () => { cleanup(); resolve() }
-        const onError = (error: Error) => { cleanup(); reject(error) }
-        const cleanup = () => {
-          stream.removeListener('drain', onDrain)
-          stream.removeListener('error', onError)
-        }
-        stream.once('drain', onDrain)
-        stream.once('error', onError)
-      })
-      if (total) reportProgress(received / total * 100)
-      if (!options.quiet && process.stderr.isTTY && Date.now() - lastReport > 400) {
-        const progress = total ? ` ${(received / total * 100).toFixed(1)}%` : ` ${(received / 1024 / 1024).toFixed(1)} MiB`
-        process.stderr.write(`\rDownloading ${label}:${progress}`)
-        lastReport = Date.now()
-      }
+  const tracker = new PassThrough()
+  tracker.on('data', (chunk: Buffer) => {
+    received += chunk.length
+    hash.update(chunk)
+    if (total) reportProgress(received / total * 100)
+    if (!options.quiet && process.stderr.isTTY && Date.now() - lastReport > 400) {
+      const progress = total ? ` ${(received / total * 100).toFixed(1)}%` : ` ${(received / 1024 / 1024).toFixed(1)} MiB`
+      process.stderr.write(`\rDownloading ${label}:${progress}`)
+      lastReport = Date.now()
     }
-    if (streamFailure) throw streamFailure
-    await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error) => { cleanup(); reject(error) }
-      const cleanup = () => stream.removeListener('error', onError)
-      stream.once('error', onError)
-      stream.end(() => { cleanup(); resolve() })
-    })
+  })
+  try {
+    await pipeline(response.data, tracker, createWriteStream(destination))
     reportProgress(100)
     if (!options.quiet && process.stderr.isTTY) process.stderr.write(`\rDownloading ${label}: done${' '.repeat(12)}\n`)
     return hash.digest('hex')
   } catch (error) {
-    stream.destroy()
     await rm(destination, { force: true })
-    throw error
+    if (axios.isAxiosError(error)) throw new Error(`Download failed for ${url}: ${error.message}`)
+    throw error instanceof Error ? error : new Error(String(error))
   }
 }
 

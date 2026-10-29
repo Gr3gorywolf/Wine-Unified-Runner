@@ -1,4 +1,4 @@
-import type { ComponentName, RuntimeKind, RuntimeSource } from './types.js'
+import type { ComponentName, RuntimeKind, RuntimeSource } from './types/index.js'
 
 export interface RuntimeSourceInfo {
   id: RuntimeSource

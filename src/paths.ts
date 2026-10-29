@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Paths } from './types.js'
+import type { Paths } from './types/index.js'
+export { readJson, writeJson } from './utils/json.js'
 
 // Replaced at bundle time by scripts/build-binary.mjs. `typeof` keeps the
 // regular TypeScript/Node build safe when the compile-time constant is absent.
@@ -66,20 +67,4 @@ export async function ensurePaths(paths: Paths): Promise<void> {
     mkdir(paths.components, { recursive: true }),
     mkdir(paths.downloads, { recursive: true })
   ])
-}
-
-export async function readJson<T>(file: string): Promise<T> {
-  try {
-    return JSON.parse(await readFile(file, 'utf8')) as T
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    throw new Error(`Could not read JSON file ${file}: ${message}`)
-  }
-}
-
-export async function writeJson(file: string, data: unknown): Promise<void> {
-  await mkdir(dirname(file), { recursive: true })
-  const temporary = `${file}.${process.pid}.${Date.now()}.tmp`
-  await writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
-  await rename(temporary, file)
 }
