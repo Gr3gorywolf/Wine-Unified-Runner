@@ -3,7 +3,10 @@ import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import {
   defaultSourceForPlatform,
+  applyGameOverrides,
+  hasGameLaunchOverrides,
   isRuntimeSource,
+  loadGameOverrides,
   loadContainer,
   loadDefaults,
   parseRuntimeReference,
@@ -577,14 +580,20 @@ async function commandRun(args: string[], json: boolean): Promise<void> {
   if (!executable) throw new Error('run requires an executable path.')
   if (args.length) throw new Error(`Unexpected argument: ${args[0]}. Put program arguments after --.`)
   const paths = getPaths()
-  const container = name ? await loadContainer(name, paths) : await ensureDefaultContainer(paths)
-  const prepared = await prepareContainer(container, paths)
+  const executablePath = resolve(executable)
+  const gameOverrides = await loadGameOverrides(executablePath, paths)
+  // An explicit CLI flag always controls selection; the sidecar still applies
+  // its runtime, component, launch, and environment settings for this run.
+  const selectedContainer = name || gameOverrides.overrides.containerName
+  const container = selectedContainer ? await loadContainer(selectedContainer, paths) : await ensureDefaultContainer(paths)
+  const launchContainer = applyGameOverrides(container, gameOverrides.overrides)
+  const prepared = await prepareContainer(launchContainer, paths, { persist: !hasGameLaunchOverrides(gameOverrides.overrides) })
   const execution = await (async () => {
     try {
-      return await runRuntime(prepared.container, prepared.runtime, [resolve(executable), ...gameArgs], {
+      return await runRuntime(prepared.container, prepared.runtime, [executablePath, ...gameArgs], {
         protonVerb: prepared.runtime.kind === 'proton' ? 'waitforexitandrun' : 'run',
-        cwd: cwd ? resolve(cwd) : dirname(resolve(executable)),
-        installPath: dirname(resolve(executable)),
+        cwd: cwd ? resolve(cwd) : dirname(executablePath),
+        installPath: dirname(executablePath),
         extraEnv: await componentRuntimeEnvironment(prepared.container)
       })
     } finally {

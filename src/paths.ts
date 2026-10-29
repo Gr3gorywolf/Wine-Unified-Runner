@@ -30,6 +30,12 @@ export function getPaths(): Paths {
   const developmentDefaults = standaloneBinary
     ? resolve(moduleDirectory, 'resources', 'defaults.json')
     : resolve(moduleDirectory, '..', 'resources', 'defaults.json')
+  const installedOverrideTemplate = standaloneBinary
+    ? resolve(moduleDirectory, 'wur-overrides.template.ini')
+    : resolve(moduleDirectory, '..', 'wur-overrides.template.ini')
+  const developmentOverrideTemplate = standaloneBinary
+    ? resolve(moduleDirectory, 'resources', 'wur-overrides.template.ini')
+    : resolve(moduleDirectory, '..', 'resources', 'wur-overrides.template.ini')
 
   return {
     root,
@@ -44,7 +50,10 @@ export function getPaths(): Paths {
     defaults: join(root, 'config', 'defaults.json'),
     bundledDefaults: existsSync(installedDefaults)
       ? installedDefaults
-      : developmentDefaults
+      : developmentDefaults,
+    overrideTemplate: existsSync(installedOverrideTemplate)
+      ? installedOverrideTemplate
+      : developmentOverrideTemplate
   }
 }
 

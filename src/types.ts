@@ -132,6 +132,7 @@ export interface Paths {
   appConfig: string
   defaults: string
   bundledDefaults: string
+  overrideTemplate: string
 }
 
 export interface SpawnResult {

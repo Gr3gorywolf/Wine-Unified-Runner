@@ -63,6 +63,8 @@ wur run "/games/My Game/Game.exe" -- -windowed
 
 The runtime defined by a container is installed automatically on first use when it is missing. If installation cannot complete, WUR stops before starting the game and reports the error.
 
+Each game launch runs in its own process group. When WUR exits normally or receives `Ctrl+C`, terminal-close (`SIGHUP`), `SIGTERM`, or `SIGQUIT`, it terminates that group and requests `wineserver` shutdown so Wine helpers and game descendants do not remain running.
+
 ## Launch games
 
 ```sh
@@ -83,6 +85,26 @@ wur /games/Celeste/Celeste.exe --container celeste
 ```
 
 The shortcut accepts the standard Windows `PATHEXT` file types (`.com`, `.exe`, `.bat`, `.cmd`, `.vbs`, `.vbe`, `.js`, `.jse`, `.wsf`, `.wsh`, `.msc`) and Shell executable types (`.pif`, `.scf`, `.scr`). Pass program arguments after `--`.
+
+### Per-game overrides
+
+On the first launch, WUR writes `wur-overrides.ini` beside the Windows executable from the bundled `wur-overrides.template.ini`. The generated INI is fully commented and documents the available container selection, runtime, component, launch, and environment overrides. Delete the sidecar to recreate it from the current template.
+
+```ini
+[container]
+name = celeste
+
+[components]
+dxvk.version = 2.4
+
+[launch]
+showFps = true
+
+[environment]
+DXVK_ASYNC = 1
+```
+
+The precedence is intentional: `wur run GAME.exe --container another-container` ignores only `[container] name`; the runtime, component, launch, and environment entries still apply. Without `--container`, `[container] name` selects the container. Overrides are in-memory for that launch and never rewrite `container.json`.
 
 ## Manage runtimes
 

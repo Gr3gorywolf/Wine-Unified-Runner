@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir } from 'node:fs/promises'
+import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
 import type {
@@ -21,6 +21,20 @@ export interface ContainerManifest {
   components?: Partial<{ [Key in keyof ContainerComponents]: Partial<ComponentSelection> }>
   launch?: Partial<Omit<LaunchOptions, 'environment'>> & { environment?: Record<string, string> }
 }
+
+export interface GameOverrides {
+  containerName?: string
+  runtime?: Partial<ContainerRuntimeRef>
+  components?: Partial<{ [Key in keyof ContainerComponents]: Partial<ComponentSelection> }>
+  launch?: Partial<Omit<LaunchOptions, 'environment'>> & { environment?: Record<string, string> }
+}
+
+export const GAME_OVERRIDE_FILE = 'wur-overrides.ini'
+
+const overrideLaunchBooleanKeys = [
+  'enableEsync', 'enableFsync', 'enableMsync', 'enableWayland', 'enableHdr',
+  'enableWow64', 'showFps', 'fsr', 'verboseLogs'
+] as const
 
 const validSources = new Set<RuntimeSource>([
   'ge-proton',
@@ -139,6 +153,143 @@ export function containerFile(paths: Paths, name: string): string {
 /** The hand-authored, partial configuration consumed by `wur build`. */
 export function containerManifestFile(paths: Paths, name: string): string {
   return join(containerDirectory(paths, name), 'config.json')
+}
+
+export function gameOverrideFile(executable: string): string {
+  return join(dirname(executable), GAME_OVERRIDE_FILE)
+}
+
+function overrideError(file: string, line: number, message: string): Error {
+  return new Error(`${file}:${line}: ${message}`)
+}
+
+function parseOverrideBoolean(value: string, file: string, line: number): boolean {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  throw overrideError(file, line, 'Expected true or false.')
+}
+
+function parseOverrideNumber(value: string, file: string, line: number): number {
+  const number = Number(value)
+  if (!Number.isFinite(number)) throw overrideError(file, line, 'Expected a finite number.')
+  return number
+}
+
+/** Parses the intentionally small INI surface used for one game's launch. */
+export function parseGameOverrides(contents: string, file = GAME_OVERRIDE_FILE): GameOverrides {
+  const overrides: GameOverrides = {}
+  let section = ''
+  const componentKeys = new Set<keyof ContainerComponents>(['dxvk', 'dxvkNvapi', 'vkd3d', 'eacRuntime', 'battleyeRuntime'])
+  for (const [index, rawLine] of contents.split(/\r?\n/u).entries()) {
+    const line = index + 1
+    const text = rawLine.trim()
+    if (!text || text.startsWith(';') || text.startsWith('#')) continue
+    const sectionMatch = /^\[([^\]]+)]$/.exec(text)
+    if (sectionMatch) {
+      section = sectionMatch[1].trim().toLowerCase()
+      if (!['container', 'runtime', 'components', 'launch', 'environment'].includes(section)) {
+        throw overrideError(file, line, `Unknown section [${sectionMatch[1]}].`)
+      }
+      continue
+    }
+    const equals = text.indexOf('=')
+    if (equals < 1) throw overrideError(file, line, 'Expected key = value.')
+    const key = text.slice(0, equals).trim()
+    const value = text.slice(equals + 1).trim()
+    if (!section) throw overrideError(file, line, 'A setting must be inside a section.')
+    if (!value) throw overrideError(file, line, 'A setting value cannot be empty.')
+
+    if (section === 'container') {
+      if (key !== 'name') throw overrideError(file, line, `Unknown [container] setting "${key}".`)
+      assertContainerName(value)
+      overrides.containerName = value
+      continue
+    }
+    if (section === 'runtime') {
+      if (key !== 'source' && key !== 'version') throw overrideError(file, line, `Unknown [runtime] setting "${key}".`)
+      const runtime = overrides.runtime ||= {}
+      if (key === 'source') {
+        if (!isRuntimeSource(value)) throw overrideError(file, line, `Unknown runtime source "${value}".`)
+        runtime.source = value
+      } else {
+        runtime.version = value
+      }
+      continue
+    }
+    if (section === 'components') {
+      const match = /^([A-Za-z][A-Za-z0-9]*)\.(enabled|version)$/.exec(key)
+      if (!match || !componentKeys.has(match[1] as keyof ContainerComponents)) {
+        throw overrideError(file, line, `Expected COMPONENT.enabled or COMPONENT.version, received "${key}".`)
+      }
+      const component = match[1] as keyof ContainerComponents
+      const selection = (overrides.components ||= {})[component] ||= {}
+      if (match[2] === 'enabled') selection.enabled = parseOverrideBoolean(value, file, line)
+      else selection.version = value
+      continue
+    }
+    if (section === 'launch') {
+      if ((overrideLaunchBooleanKeys as readonly string[]).includes(key)) {
+        const launch = overrides.launch ||= {}
+        launch[key as typeof overrideLaunchBooleanKeys[number]] = parseOverrideBoolean(value, file, line)
+        continue
+      }
+      const launch = overrides.launch ||= {}
+      if (key === 'dxvkFrameRate') {
+        launch.dxvkFrameRate = value === 'null' ? null : parseOverrideNumber(value, file, line)
+        continue
+      }
+      if (key === 'fsrSharpness') {
+        launch.fsrSharpness = parseOverrideNumber(value, file, line)
+        continue
+      }
+      throw overrideError(file, line, `Unknown [launch] setting "${key}".`)
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      throw overrideError(file, line, `Invalid environment variable name "${key}".`)
+    }
+    const environment = (overrides.launch ||= {}).environment ||= {}
+    environment[key] = value
+  }
+  return overrides
+}
+
+/** Creates the editable sidecar when absent, then parses the game's settings. */
+export async function loadGameOverrides(executable: string, paths = getPaths()): Promise<{ file: string; overrides: GameOverrides }> {
+  const file = gameOverrideFile(executable)
+  if (!existsSync(file)) {
+    if (!existsSync(paths.overrideTemplate)) {
+      throw new Error(`WUR override template is missing: ${paths.overrideTemplate}`)
+    }
+    await mkdir(dirname(file), { recursive: true })
+    await copyFile(paths.overrideTemplate, file)
+  }
+  return { file, overrides: parseGameOverrides(await readFile(file, 'utf8'), file) }
+}
+
+/** Applies non-selection overrides to an in-memory container for one launch. */
+export function applyGameOverrides(container: ContainerConfig, overrides: GameOverrides): ContainerConfig {
+  const result = structuredClone(container)
+  if (overrides.runtime?.source !== undefined) result.runtime.source = overrides.runtime.source
+  if (overrides.runtime?.version !== undefined) result.runtime.version = overrides.runtime.version
+  for (const [key, selection] of Object.entries(overrides.components || {}) as Array<[keyof ContainerComponents, Partial<ComponentSelection>]>) {
+    if (selection.enabled !== undefined) result.components[key].enabled = selection.enabled
+    if (selection.version !== undefined) result.components[key].version = selection.version
+  }
+  if (overrides.launch) {
+    for (const key of overrideLaunchBooleanKeys) {
+      const value = overrides.launch[key]
+      if (value !== undefined) result.launch[key] = value
+    }
+    if (overrides.launch.dxvkFrameRate !== undefined) result.launch.dxvkFrameRate = overrides.launch.dxvkFrameRate
+    if (overrides.launch.fsrSharpness !== undefined) result.launch.fsrSharpness = overrides.launch.fsrSharpness
+    if (overrides.launch.environment) result.launch.environment = { ...result.launch.environment, ...overrides.launch.environment }
+  }
+  validateContainer(result, GAME_OVERRIDE_FILE)
+  return result
+}
+
+export function hasGameLaunchOverrides(overrides: GameOverrides): boolean {
+  return Boolean(overrides.runtime || overrides.components || overrides.launch)
 }
 
 export function assertContainerName(name: string): void {

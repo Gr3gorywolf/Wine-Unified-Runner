@@ -7,6 +7,73 @@ import type { ContainerConfig, InstalledRuntime, SpawnResult } from './types.js'
 
 export const SHARED_WINE_USERNAME = 'user'
 
+interface ManagedWineLaunch {
+  pid: number
+  runtime: InstalledRuntime
+  env: NodeJS.ProcessEnv
+}
+
+const managedWineLaunches = new Map<number, ManagedWineLaunch>()
+let pruningManagedLaunches = false
+
+/**
+ * A Wine program can outlive its command-line loader. On POSIX, starting the
+ * loader detached creates a new process group whose id is the loader's PID;
+ * killing the negative PID then reaches Wine and every descendant in that
+ * launch without touching the caller's terminal process group.
+ */
+function terminateLaunchGroup(pid: number): void {
+  try {
+    if (process.platform === 'win32') process.kill(pid, 'SIGKILL')
+    else process.kill(-pid, 'SIGKILL')
+  } catch {
+    // The loader may already have reaped every process in its group.
+  }
+}
+
+function requestWineServerShutdown(launch: ManagedWineLaunch): void {
+  if (!launch.runtime.wineserver || !existsSync(launch.runtime.wineserver)) return
+  try {
+    const wineserver = spawn(launch.runtime.wineserver, ['-k'], {
+      env: launch.env,
+      stdio: 'ignore',
+      detached: process.platform !== 'win32'
+    })
+    wineserver.once('error', () => undefined)
+    wineserver.unref()
+  } catch {
+    // The process group termination remains the reliable fallback.
+  }
+}
+
+function pruneManagedWineLaunches(): void {
+  if (pruningManagedLaunches) return
+  pruningManagedLaunches = true
+  for (const launch of managedWineLaunches.values()) {
+    requestWineServerShutdown(launch)
+    terminateLaunchGroup(launch.pid)
+  }
+  managedWineLaunches.clear()
+}
+
+// `exit` only permits synchronous cleanup, which is exactly what process
+// group termination needs. Signal handlers cover closing a terminal as well
+// as Ctrl+C, where Node would otherwise terminate before this handler runs.
+process.once('exit', pruneManagedWineLaunches)
+const terminationSignals: NodeJS.Signals[] = ['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGTERM']
+const signalExitCode: Partial<Record<NodeJS.Signals, number>> = {
+  SIGHUP: 1,
+  SIGINT: 2,
+  SIGQUIT: 3,
+  SIGTERM: 15
+}
+for (const signal of terminationSignals) {
+  process.once(signal, () => {
+    pruneManagedWineLaunches()
+    process.exit(128 + (signalExitCode[signal] || 1))
+  })
+}
+
 /**
  * `close` waits for every inherited pipe to close. Wine helper processes can
  * retain those descriptors after the game process exits, leaving a CLI stuck
@@ -119,9 +186,20 @@ export async function runRuntime(
   const child = spawn(runtime.bin, args, {
     cwd: options.cwd,
     env,
-    stdio: inheritsStdio ? 'inherit' : 'pipe'
+    stdio: inheritsStdio ? 'inherit' : 'pipe',
+    detached: process.platform !== 'win32'
   })
-  return await waitForProcessExit(child, `Could not run ${runtime.bin}`, !inheritsStdio)
+  if (child.pid) managedWineLaunches.set(child.pid, { pid: child.pid, runtime, env })
+  try {
+    return await waitForProcessExit(child, `Could not run ${runtime.bin}`, !inheritsStdio)
+  } finally {
+    if (child.pid) {
+      // `exit` can be emitted while Wine descendants still run. Prune that
+      // launch before WUR itself returns control to the shell.
+      terminateLaunchGroup(child.pid)
+      managedWineLaunches.delete(child.pid)
+    }
+  }
 }
 
 /** Stops background Wine services for this self-contained prefix. */

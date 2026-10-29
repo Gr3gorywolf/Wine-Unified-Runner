@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import test from 'node:test'
-import { containerManifestFile, loadAppConfig, loadContainer, loadDefaults, newContainer, parseRuntimeReference, parseSetExpression, saveContainer, setAtPath } from '../src/config.js'
+import { applyGameOverrides, containerManifestFile, loadAppConfig, loadContainer, loadDefaults, loadGameOverrides, newContainer, parseRuntimeReference, parseSetExpression, saveContainer, setAtPath } from '../src/config.js'
 import { removeComponent } from '../src/components.js'
 import { buildContainer, createContainer, removeContainer } from '../src/containers.js'
 import { buildLaunchEnvironment, runRuntime } from '../src/launch.js'
@@ -28,7 +28,8 @@ function portablePaths(root: string): Paths {
     downloads: join(root, 'downloads'),
     appConfig: join(root, 'config', 'config.json'),
     defaults: join(root, 'config', 'defaults.json'),
-    bundledDefaults: join(root, 'defaults.json')
+    bundledDefaults: join(root, 'defaults.json'),
+    overrideTemplate: join(root, 'wur-overrides.template.ini')
   }
 }
 
@@ -98,6 +99,45 @@ test('settings path parsing preserves JSON values', () => {
   assert.equal(runtimeId('ge-proton', 'GE-Proton10-1'), 'ge-proton--GE-Proton10-1')
 })
 
+test('per-game INI overrides are created from the template and apply without changing the container', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'wur-overrides-'))
+  const paths = portablePaths(root)
+  const executable = join(root, 'games', 'Example.exe')
+  const sidecar = join(root, 'games', 'wur-overrides.ini')
+  try {
+    await mkdir(dirname(executable), { recursive: true })
+    await writeFile(executable, '')
+    await writeFile(paths.overrideTemplate, `; template\n[container]\nname = sidecar-container\n[runtime]\nversion = custom-runtime\n[components]\ndxvk.version = 2.4\ndxvkNvapi.enabled = true\n[launch]\nenableHdr = true\ndxvkFrameRate = 60\n[environment]\nDXVK_ASYNC = 1\n`)
+
+    const loaded = await loadGameOverrides(executable, paths)
+    assert.equal(loaded.file, sidecar)
+    assert.equal(loaded.overrides.containerName, 'sidecar-container')
+    assert.equal(loaded.overrides.runtime?.version, 'custom-runtime')
+    assert.equal(loaded.overrides.components?.dxvk?.version, '2.4')
+    assert.equal(loaded.overrides.components?.dxvkNvapi?.enabled, true)
+    assert.equal(loaded.overrides.launch?.enableHdr, true)
+    assert.equal(loaded.overrides.launch?.dxvkFrameRate, 60)
+    assert.equal(loaded.overrides.launch?.environment?.DXVK_ASYNC, '1')
+
+    const original = newContainer('base', testDefaults, paths)
+    const effective = applyGameOverrides(original, loaded.overrides)
+    assert.equal(effective.runtime.version, 'custom-runtime')
+    assert.equal(effective.components.dxvk.version, '2.4')
+    assert.equal(effective.components.dxvkNvapi.enabled, true)
+    assert.equal(effective.launch.enableHdr, true)
+    assert.equal(effective.launch.dxvkFrameRate, 60)
+    assert.equal(effective.launch.environment.DXVK_ASYNC, '1')
+    assert.equal(original.runtime.version, 'latest')
+    assert.equal(original.launch.enableHdr, false)
+
+    await rm(sidecar)
+    await loadGameOverrides(executable, paths)
+    assert.equal(await readFile(sidecar, 'utf8'), await readFile(paths.overrideTemplate, 'utf8'))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('an existing Windows-launchable file is eligible for the implicit run command', async () => {
   const root = await mkdtemp(join(tmpdir(), 'wur-invocation-'))
   const extensions = ['com', 'exe', 'bat', 'cmd', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'msc', 'pif', 'scf', 'scr']
@@ -158,8 +198,10 @@ test('container runtime references remain declarative when legacy metadata is lo
   }
 })
 
-test('runRuntime returns after its primary process exits even when a child keeps stdio open', async () => {
+test('runRuntime returns after its primary process exits and prunes remaining descendants', async () => {
   const started = performance.now()
+  const root = await mkdtemp(join(tmpdir(), 'wur-launch-tree-'))
+  const childPidFile = join(root, 'child.pid')
   const container = {
     schemaVersion: 1,
     name: 'exit-test',
@@ -190,18 +232,31 @@ test('runRuntime returns after its primary process exits even when a child keeps
       environment: {}
     }
   } satisfies ContainerConfig
-  const result = await runRuntime(container, {
-    id: 'test-runtime',
-    source: 'wine-staging-macos',
-    version: 'test',
-    kind: 'wine',
-    path: '/tmp',
-    bin: '/bin/sh',
-    installedAt: '2026-01-01T00:00:00.000Z',
-    release: { date: '2026-01-01', download: 'https://example.invalid/runtime', notesUrl: 'https://example.invalid' }
-  }, ['-c', '(sleep 2) & exit 0'], { inheritStdio: false })
-  assert.equal(result.code, 0)
-  assert.ok(performance.now() - started < 1_000)
+  try {
+    const result = await runRuntime(container, {
+      id: 'test-runtime',
+      source: 'wine-staging-macos',
+      version: 'test',
+      kind: 'wine',
+      path: '/tmp',
+      bin: '/bin/sh',
+      installedAt: '2026-01-01T00:00:00.000Z',
+      release: { date: '2026-01-01', download: 'https://example.invalid/runtime', notesUrl: 'https://example.invalid' }
+    }, ['-c', `sleep 10 & echo $! > "${childPidFile}"; exit 0`], { inheritStdio: false })
+    assert.equal(result.code, 0)
+    assert.ok(performance.now() - started < 1_000)
+    const childPid = Number((await readFile(childPidFile, 'utf8')).trim())
+    assert.ok(Number.isInteger(childPid) && childPid > 0)
+
+    let alive = true
+    for (let attempt = 0; attempt < 40; attempt++) {
+      try { process.kill(childPid, 0) } catch { alive = false; break }
+      await new Promise<void>((resolve) => setTimeout(resolve, 25))
+    }
+    assert.equal(alive, false, 'the child process should be gone when runRuntime returns')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('all prefixes link the same Wine username to the shared portable user directory', async () => {
