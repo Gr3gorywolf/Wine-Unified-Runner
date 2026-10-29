@@ -32,6 +32,13 @@ export interface InstalledRuntime {
   release: Pick<RuntimeRelease, 'date' | 'download' | 'notesUrl'>
 }
 
+export interface InstallOptions {
+  /** Receives an integer percentage from 0 through 100. */
+  onProgress?: (progress: number) => void
+  /** Suppresses human-oriented status output for machine-readable callers. */
+  quiet?: boolean
+}
+
 export type ComponentName =
   | 'dxvk'
   | 'dxvk-nvapi'

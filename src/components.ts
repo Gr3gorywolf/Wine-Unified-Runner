@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { downloadFile, extractArchive, fetchJson } from './network.js'
 import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
 import { compatibleComponentRecommendations, componentNames, isArchiveAsset } from './sources.js'
-import type { ComponentName, ComponentRelease, InstalledComponent, Paths } from './types.js'
+import type { ComponentName, ComponentRelease, InstallOptions, InstalledComponent, Paths } from './types.js'
 
 interface GithubAsset {
   name: string
@@ -132,24 +132,41 @@ export async function findInstalledComponent(name: ComponentName, version: strin
     : installed.find((component) => component.name === name && component.version === version)
 }
 
-export async function installComponent(name: ComponentName, requestedVersion = 'latest', force = false, paths = getPaths()): Promise<InstalledComponent> {
+export async function installComponent(
+  name: ComponentName,
+  requestedVersion = 'latest',
+  force = false,
+  paths = getPaths(),
+  options: InstallOptions = {}
+): Promise<InstalledComponent> {
   if (!componentNames.includes(name)) throw new Error(`Unknown component "${name}".`)
+  options.onProgress?.(0)
   await ensurePaths(paths)
   const existing = await findInstalledComponent(name, requestedVersion, paths)
-  if (existing && !force) return existing
+  if (existing && !force) {
+    options.onProgress?.(100)
+    return existing
+  }
   const release = (await listComponentReleases(name, 100)).find((candidate) => requestedVersion === 'latest' || candidate.version === requestedVersion)
   if (!release) throw new Error(`Version "${requestedVersion}" was not found for component ${name}.`)
   const exact = await findInstalledComponent(name, release.version, paths)
-  if (exact && !force) return exact
+  if (exact && !force) {
+    options.onProgress?.(100)
+    return exact
+  }
 
   const destination = componentPath(paths, name, release.version)
   const archive = join(paths.downloads, `${name}-${release.version.replace(/[^A-Za-z0-9._-]+/g, '_')}-${release.download.split('/').at(-1)}`)
   const staging = `${destination}.extracting-${process.pid}-${Date.now()}`
-  console.error(`Installing ${name} ${release.version}…`)
-  await downloadFile(release.download, archive, `${name} ${release.version}`)
+  if (!options.quiet) console.error(`Installing ${name} ${release.version}…`)
+  await downloadFile(release.download, archive, `${name} ${release.version}`, {
+    quiet: options.quiet,
+    onProgress: (progress) => options.onProgress?.(progress * 0.9)
+  })
   try {
     await rm(staging, { recursive: true, force: true })
-    await extractArchive(archive, staging, release.stripComponents)
+    await extractArchive(archive, staging, release.stripComponents, options.quiet)
+    options.onProgress?.(97)
     const installed: InstalledComponent = {
       name,
       version: release.version,
@@ -160,11 +177,15 @@ export async function installComponent(name: ComponentName, requestedVersion = '
     await writeJson(metadataFile(staging), installed)
     await mkdir(join(paths.components, name), { recursive: true })
     if (existsSync(destination)) {
-      if (!force) return await readJson<InstalledComponent>(metadataFile(destination))
+      if (!force) {
+        options.onProgress?.(100)
+        return await readJson<InstalledComponent>(metadataFile(destination))
+      }
       await rm(destination, { recursive: true, force: true })
     }
     await rename(staging, destination)
-    console.error(`Installed ${name} ${release.version}`)
+    options.onProgress?.(100)
+    if (!options.quiet) console.error(`Installed ${name} ${release.version}`)
     return installed
   } catch (error) {
     await rm(staging, { recursive: true, force: true })

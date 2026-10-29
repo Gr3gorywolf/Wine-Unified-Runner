@@ -5,7 +5,7 @@ import { isRuntimeSource } from './config.js'
 import { downloadFile, extractArchive, fetchJson, verifySha512 } from './network.js'
 import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
 import { assetMatchesArchitecture, isArchiveAsset, runtimeSources, sourcesForPlatform } from './sources.js'
-import type { InstalledRuntime, Paths, RuntimeRelease, RuntimeSource } from './types.js'
+import type { InstallOptions, InstalledRuntime, Paths, RuntimeRelease, RuntimeSource } from './types.js'
 
 interface GithubAsset {
   name: string
@@ -107,7 +107,7 @@ export async function findInstalledRuntime(source: RuntimeSource, version: strin
 async function resolveRelease(source: RuntimeSource, version: string): Promise<RuntimeRelease> {
   const releases = await listReleases(source, 100, true)
   const release = releases.find((candidate) => candidate.version === version)
-  if (!release) throw new Error(`Version "${version}" was not found for ${source}. Run "wur runtime list --source ${source}".`)
+  if (!release) throw new Error(`Version "${version}" was not found for ${source}. Run "wur runtime list --remote --source ${source}".`)
   return release
 }
 
@@ -158,26 +158,46 @@ export async function findRuntimeBinary(root: string, kind: InstalledRuntime['ki
   throw new Error(`Runtime was extracted, but no executable was found in ${root}. Expected one of: ${possibleBinaries(kind).join(', ')}`)
 }
 
-export async function installRuntime(source: RuntimeSource, requestedVersion = 'latest', force = false, paths = getPaths()): Promise<InstalledRuntime> {
+export async function installRuntime(
+  source: RuntimeSource,
+  requestedVersion = 'latest',
+  force = false,
+  paths = getPaths(),
+  options: InstallOptions = {}
+): Promise<InstalledRuntime> {
   if (!isRuntimeSource(source)) throw new Error(`Unknown runtime source "${source}".`)
+  options.onProgress?.(0)
   await ensurePaths(paths)
   const alreadyInstalled = await findInstalledRuntime(source, requestedVersion, paths)
-  if (alreadyInstalled && !force) return alreadyInstalled
+  if (alreadyInstalled && !force) {
+    options.onProgress?.(100)
+    return alreadyInstalled
+  }
 
   const release = await resolveRelease(source, requestedVersion)
   const destination = join(paths.runtimes, runtimeId(source, release.version))
   const existingExact = await findInstalledRuntime(source, release.version, paths)
-  if (existingExact && !force) return existingExact
+  if (existingExact && !force) {
+    options.onProgress?.(100)
+    return existingExact
+  }
 
   const archive = join(paths.downloads, `${runtimeId(source, release.version)}-${release.download.split('/').at(-1)}`)
-  console.error(`Installing ${runtimeSources[source].label} ${release.version}…`)
-  const digest = await downloadFile(release.download, archive, `${runtimeSources[source].label} ${release.version}`)
-  if (release.checksum) await verifySha512(release.checksum, digest)
+  if (!options.quiet) console.error(`Installing ${runtimeSources[source].label} ${release.version}…`)
+  const digest = await downloadFile(release.download, archive, `${runtimeSources[source].label} ${release.version}`, {
+    quiet: options.quiet,
+    onProgress: (progress) => options.onProgress?.(progress * 0.9)
+  })
+  if (release.checksum) {
+    await verifySha512(release.checksum, digest)
+    options.onProgress?.(93)
+  }
 
   const staging = `${destination}.extracting-${process.pid}-${Date.now()}`
   await rm(staging, { recursive: true, force: true })
   try {
-    await extractArchive(archive, staging, 1)
+    await extractArchive(archive, staging, 1, options.quiet)
+    options.onProgress?.(97)
     const kind = runtimeSources[source].kind
     const bin = await findRuntimeBinary(staging, kind)
     try { await chmod(bin, 0o755) } catch { /* archive permissions are normally sufficient */ }
@@ -198,11 +218,15 @@ export async function installRuntime(source: RuntimeSource, requestedVersion = '
     }
     await writeJson(metadataFile(staging), installed)
     if (existsSync(destination)) {
-      if (!force) return await readJson<InstalledRuntime>(metadataFile(destination))
+      if (!force) {
+        options.onProgress?.(100)
+        return await readJson<InstalledRuntime>(metadataFile(destination))
+      }
       await rm(destination, { recursive: true, force: true })
     }
     await rename(staging, destination)
-    console.error(`Installed ${installed.id} in ${destination}`)
+    options.onProgress?.(100)
+    if (!options.quiet) console.error(`Installed ${installed.id} in ${destination}`)
     return installed
   } catch (error) {
     await rm(staging, { recursive: true, force: true })

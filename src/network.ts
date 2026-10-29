@@ -21,7 +21,17 @@ export async function fetchText(url: string): Promise<string> {
   return await response.text()
 }
 
-export async function downloadFile(url: string, destination: string, label = basename(new URL(url).pathname)): Promise<string> {
+export interface DownloadOptions {
+  onProgress?: (progress: number) => void
+  quiet?: boolean
+}
+
+export async function downloadFile(
+  url: string,
+  destination: string,
+  label = basename(new URL(url).pathname),
+  options: DownloadOptions = {}
+): Promise<string> {
   await mkdir(dirname(destination), { recursive: true })
   const response = await fetch(url, { headers, redirect: 'follow' })
   if (!response.ok || !response.body) throw new Error(`Download failed (${response.status}) for ${url}`)
@@ -31,7 +41,15 @@ export async function downloadFile(url: string, destination: string, label = bas
   const stream = createWriteStream(destination)
   let received = 0
   let lastReport = 0
+  let lastProgress = -1
   let streamFailure: Error | undefined
+  const reportProgress = (progress: number) => {
+    const normalized = Math.min(100, Math.max(0, Math.floor(progress)))
+    if (normalized === lastProgress) return
+    lastProgress = normalized
+    options.onProgress?.(normalized)
+  }
+  reportProgress(0)
   stream.on('error', (error) => { streamFailure ||= error })
   try {
     for await (const part of response.body as unknown as AsyncIterable<Uint8Array>) {
@@ -49,7 +67,8 @@ export async function downloadFile(url: string, destination: string, label = bas
         stream.once('drain', onDrain)
         stream.once('error', onError)
       })
-      if (process.stderr.isTTY && Date.now() - lastReport > 400) {
+      if (total) reportProgress(received / total * 100)
+      if (!options.quiet && process.stderr.isTTY && Date.now() - lastReport > 400) {
         const progress = total ? ` ${(received / total * 100).toFixed(1)}%` : ` ${(received / 1024 / 1024).toFixed(1)} MiB`
         process.stderr.write(`\rDownloading ${label}:${progress}`)
         lastReport = Date.now()
@@ -62,7 +81,8 @@ export async function downloadFile(url: string, destination: string, label = bas
       stream.once('error', onError)
       stream.end(() => { cleanup(); resolve() })
     })
-    if (process.stderr.isTTY) process.stderr.write(`\rDownloading ${label}: done${' '.repeat(12)}\n`)
+    reportProgress(100)
+    if (!options.quiet && process.stderr.isTTY) process.stderr.write(`\rDownloading ${label}: done${' '.repeat(12)}\n`)
     return hash.digest('hex')
   } catch (error) {
     stream.destroy()
@@ -78,14 +98,16 @@ export async function verifySha512(checksumUrl: string, digest: string): Promise
   }
 }
 
-export async function extractArchive(archive: string, destination: string, stripComponents = 1): Promise<void> {
+export async function extractArchive(archive: string, destination: string, stripComponents = 1, quiet = false): Promise<void> {
   await mkdir(destination, { recursive: true })
   const args = ['-xf', archive, '-C', destination]
   if (stripComponents > 0) args.push(`--strip-components=${stripComponents}`)
   await new Promise<void>((resolve, reject) => {
-    const child = spawn('tar', args, { stdio: ['ignore', 'inherit', 'inherit'] })
+    const child = spawn('tar', args, { stdio: quiet ? ['ignore', 'ignore', 'pipe'] : ['ignore', 'inherit', 'inherit'] })
+    let stderr = ''
+    if (quiet) child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
     child.once('error', (error) => reject(new Error(`Could not start tar: ${error.message}`)))
-    child.once('close', (code) => code === 0 ? resolve() : reject(new Error(`tar exited with status ${code}`)))
+    child.once('close', (code) => code === 0 ? resolve() : reject(new Error(`tar exited with status ${code}${stderr.trim() ? `: ${stderr.trim()}` : ''}`)))
   })
 }
 

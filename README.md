@@ -87,11 +87,12 @@ The shortcut accepts the standard Windows `PATHEXT` file types (`.com`, `.exe`, 
 ## Manage runtimes
 
 ```sh
-# Releases compatible with the current platform.
+# Managed runtime installations, then compatible remote releases.
 wur runtime list
+wur runtime list --remote
 
 # Complete catalog, including the other platform.
-wur runtime list --all
+wur runtime list --remote --all
 
 # Install the recommended runtime for this platform.
 wur runtime install
@@ -100,8 +101,6 @@ wur runtime install
 wur runtime install ge-proton latest
 wur runtime remove game-porting-toolkit latest
 
-# Inspect managed installations.
-wur runtime installed
 ```
 
 There is no separate Proton command: Proton is one runtime kind among the sources managed by `wur runtime`.
@@ -211,6 +210,14 @@ To place state elsewhere for one command, use `--home DIRECTORY`. To make anothe
 ## Output and global options
 
 Commands that return lists or structured values support `--json`. Use `--home DIRECTORY` before the program separator, and use `--` to pass remaining arguments to the Windows executable.
+
+`runtime install --json` and `component install --json` use JSON Lines so callers can consume live download state. Each line is either a progress event or, if the installation fails, an error event:
+
+```json
+{"name":"wine-crossover","progress":50}
+{"name":"wine-crossover","progress":100}
+{"error":"Download failed (404) for https://example.invalid/runtime.tar.xz"}
+```
 
 ```sh
 wur runtime list --json

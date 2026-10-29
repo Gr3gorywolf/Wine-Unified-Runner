@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { promisify } from 'node:util'
 import test from 'node:test'
 import { containerManifestFile, loadAppConfig, loadContainer, loadDefaults, newContainer, parseRuntimeReference, parseSetExpression, saveContainer, setAtPath } from '../src/config.js'
 import { removeComponent } from '../src/components.js'
@@ -13,6 +15,8 @@ import { getPaths, readJson, writeJson } from '../src/paths.js'
 import { ensureSharedUserProfile } from '../src/profile.js'
 import { findRuntimeBinary, removeRuntime, runtimeId } from '../src/runtime.js'
 import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from '../src/types.js'
+
+const execFileAsync = promisify(execFile)
 
 function portablePaths(root: string): Paths {
   return {
@@ -272,6 +276,84 @@ test('remove operations delete only portable managed data and clear the default 
     assert.equal(existsSync(containerResult.path), false)
     assert.equal(containerResult.clearedDefault, true)
     assert.equal((await loadAppConfig(paths)).defaultContainer, undefined)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('runtime list follows the component list convention: local by default and remote only on request', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'wur-runtime-list-'))
+  const runtime = {
+    id: 'ge-proton--test',
+    source: 'ge-proton',
+    version: 'test',
+    kind: 'proton',
+    path: join(root, 'runtimes', 'ge-proton--test'),
+    bin: join(root, 'runtimes', 'ge-proton--test', 'proton'),
+    installedAt: '2026-01-01T00:00:00.000Z',
+    release: { date: '2026-01-01', download: 'https://example.invalid/runtime', notesUrl: 'https://example.invalid' }
+  } satisfies InstalledRuntime
+  try {
+    await mkdir(runtime.path, { recursive: true })
+    await writeJson(join(runtime.path, 'runtime.json'), runtime)
+    const cli = resolve(process.cwd(), 'dist', 'src', 'cli.js')
+    const local = await execFileAsync(process.execPath, [cli, '--home', root, 'runtime', 'list', '--json'])
+    assert.deepEqual(JSON.parse(local.stdout), [runtime])
+    await assert.rejects(
+      execFileAsync(process.execPath, [cli, '--home', root, 'runtime', 'installed']),
+      /Use runtime list, runtime install, or runtime remove/
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('JSON installs stream progress events and report errors as JSON', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'wur-json-install-'))
+  const runtimeSource = process.platform === 'darwin' ? 'wine-crossover' : 'ge-proton'
+  const runtime = {
+    id: `${runtimeSource}--test`,
+    source: runtimeSource,
+    version: 'test',
+    kind: runtimeSource === 'ge-proton' ? 'proton' : 'crossover',
+    path: join(root, 'runtimes', `${runtimeSource}--test`),
+    bin: runtimeSource === 'ge-proton'
+      ? join(root, 'runtimes', `${runtimeSource}--test`, 'proton')
+      : join(root, 'runtimes', `${runtimeSource}--test`, 'Contents', 'Resources', 'wine', 'bin', 'wine64'),
+    installedAt: '2026-01-01T00:00:00.000Z',
+    release: { date: '2026-01-01', download: 'https://example.invalid/runtime', notesUrl: 'https://example.invalid' }
+  } satisfies InstalledRuntime
+  const componentPath = join(root, 'components', 'dxvk', 'test')
+  try {
+    await mkdir(dirname(runtime.bin), { recursive: true })
+    await writeFile(runtime.bin, '')
+    await writeJson(join(runtime.path, 'runtime.json'), runtime)
+    await mkdir(componentPath, { recursive: true })
+    await writeJson(join(componentPath, 'component.json'), {
+      name: 'dxvk',
+      version: 'test',
+      path: componentPath,
+      installedAt: '2026-01-01T00:00:00.000Z',
+      release: { date: '2026-01-01', download: 'https://example.invalid/component', notesUrl: 'https://example.invalid' }
+    })
+    const cli = resolve(process.cwd(), 'dist', 'src', 'cli.js')
+    const runtimeResult = await execFileAsync(process.execPath, [cli, '--home', root, 'runtime', 'install', runtimeSource, 'test', '--json'])
+    const componentResult = await execFileAsync(process.execPath, [cli, '--home', root, 'component', 'install', 'dxvk', 'test', '--json'])
+    assert.deepEqual(runtimeResult.stdout.trim().split('\n').map((line) => JSON.parse(line)), [
+      { name: runtimeSource, progress: 0 },
+      { name: runtimeSource, progress: 100 }
+    ])
+    assert.deepEqual(componentResult.stdout.trim().split('\n').map((line) => JSON.parse(line)), [
+      { name: 'dxvk', progress: 0 },
+      { name: 'dxvk', progress: 100 }
+    ])
+    await assert.rejects(
+      execFileAsync(process.execPath, [cli, '--home', root, 'component', 'install', 'unknown', '--json']),
+      (error: { stdout?: string }) => {
+        assert.deepEqual(JSON.parse(error.stdout?.trim() || ''), { error: 'Unknown component "unknown".' })
+        return true
+      }
+    )
   } finally {
     await rm(root, { recursive: true, force: true })
   }

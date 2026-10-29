@@ -45,6 +45,7 @@ import type { ComponentName, ContainerConfig, RuntimeSource } from './types.js'
 const colorEnabled = process.env.NO_COLOR === undefined && process.env.TERM !== 'dumb' && (
   process.env.FORCE_COLOR !== undefined && process.env.FORCE_COLOR !== '0' || Boolean(process.stdout.isTTY)
 )
+let jsonOutput = false
 
 function color(code: number, text: string): string {
   return colorEnabled ? `\u001B[${code}m${text}\u001B[0m` : text
@@ -75,15 +76,14 @@ function usage(): string {
     ]),
     '',
     helpSection('RUNTIMES', [
-      ['wur runtime list [--source SOURCE] [--limit N] [--all] [--json]', 'List available runtime releases for this platform.'],
-      ['wur runtime installed [--json]', 'List locally installed runtimes.'],
-      ['wur runtime install [SOURCE] [VERSION] [--force]', 'Install the platform default, or a specific runtime; VERSION defaults to latest.'],
+      ['wur runtime list [--remote] [--all] [--source SOURCE] [--limit N] [--json]', 'List installed runtimes, or remote releases with --remote.'],
+      ['wur runtime install [SOURCE] [VERSION] [--force] [--json]', 'Install the platform default, or a specific runtime; VERSION defaults to latest.'],
       ['wur runtime remove SOURCE [VERSION] [--json]', 'Remove a managed runtime.']
     ]),
     '',
     helpSection('COMPONENTS', [
       ['wur component list [--remote] [--all] [--name NAME] [--limit N] [--json]', 'List installed components, or releases with --remote.'],
-      ['wur component install NAME [VERSION] [--force]', 'Download a component such as dxvk, vkd3d, or dxmt.'],
+      ['wur component install NAME [VERSION] [--force] [--json]', 'Download a component such as dxvk, vkd3d, or dxmt.'],
       ['wur component remove NAME [VERSION] [--json]', 'Remove a managed component.'],
       ['wur install-recommended [--force] [--dry-run] [--json]', 'Install the runtime and enabled components from config/defaults.json.']
     ]),
@@ -127,6 +127,11 @@ function setHomeArgument(args: string[]): string[] {
   process.env.WUR_HOME = resolve(value)
   next.splice(index, token.includes('=') ? 1 : 2)
   return next
+}
+
+function hasGlobalJsonFlag(args: string[]): boolean {
+  const boundary = args.indexOf('--')
+  return args.slice(0, boundary === -1 ? args.length : boundary).includes('--json')
 }
 
 function takeFlag(args: string[], name: string): boolean {
@@ -201,6 +206,16 @@ function output(value: unknown, json: boolean): void {
   else console.log(value)
 }
 
+function installProgressReporter(name: string): (progress: number) => void {
+  let lastProgress = -1
+  return (progress) => {
+    const normalized = Math.min(100, Math.max(0, Math.floor(progress)))
+    if (normalized === lastProgress) return
+    lastProgress = normalized
+    console.log(JSON.stringify({ name, progress: normalized }))
+  }
+}
+
 function bytes(value: number): string {
   if (!value) return '—'
   const units = ['B', 'KiB', 'MiB', 'GiB']
@@ -271,11 +286,17 @@ async function commandRuntime(args: string[], json: boolean): Promise<void> {
   const verb = args.shift()
   const paths = getPaths()
   if (verb === 'list') {
+    const remote = takeFlag(args, '--remote') || takeFlag(args, '--available')
     const sourceValue = takeOption(args, '--source')
     const source = sourceValue ? asSource(sourceValue) : undefined
     const limit = Number(takeOption(args, '--limit') || '30')
     const all = takeFlag(args, '--all')
     if (args.length) throw new Error(`Unexpected argument: ${args[0]}`)
+    if (!remote) {
+      const installed = await listInstalledRuntimes(paths)
+      output(source ? installed.filter((runtime) => runtime.source === source) : installed, json)
+      return
+    }
     if (source && !all && !canRunRuntimeOnThisSystem(source)) {
       throw new Error(`Runtime source "${source}" is not compatible with ${process.platform}/${process.arch}. Use --all only to inspect cross-platform releases.`)
     }
@@ -290,11 +311,6 @@ async function commandRuntime(args: string[], json: boolean): Promise<void> {
     })), json)
     return
   }
-  if (verb === 'installed') {
-    if (args.length) throw new Error(`Unexpected argument: ${args[0]}`)
-    output(await listInstalledRuntimes(paths), json)
-    return
-  }
   if (verb === 'install') {
     const force = takeFlag(args, '--force')
     const source = asSource(args.shift() || defaultSourceForPlatform())
@@ -304,7 +320,10 @@ async function commandRuntime(args: string[], json: boolean): Promise<void> {
       const alternatives = sourcesForPlatform().map((candidate) => candidate.id).join(', ')
       throw new Error(`Runtime source "${source}" cannot run on ${process.platform}/${process.arch}. Use one of: ${alternatives || 'no supported runtime detected'}.`)
     }
-    output(await installRuntime(source, version, force, paths), json)
+    const installed = await installRuntime(source, version, force, paths, json
+      ? { quiet: true, onProgress: installProgressReporter(source) }
+      : undefined)
+    if (!json) output(installed, false)
     return
   }
   if (verb === 'remove' || verb === 'delete') {
@@ -314,7 +333,7 @@ async function commandRuntime(args: string[], json: boolean): Promise<void> {
     output({ removed: true, ...(await removeRuntime(source, version, paths)) }, json)
     return
   }
-  throw new Error('Use runtime list, runtime installed, runtime install, or runtime remove.')
+  throw new Error('Use runtime list, runtime install, or runtime remove.')
 }
 
 async function commandComponent(args: string[], json: boolean): Promise<void> {
@@ -347,7 +366,10 @@ async function commandComponent(args: string[], json: boolean): Promise<void> {
     const name = asComponent(args.shift() || '')
     const version = args.shift() || 'latest'
     if (args.length) throw new Error(`Unexpected argument: ${args[0]}`)
-    output(await installComponent(name, version, force, paths), json)
+    const installed = await installComponent(name, version, force, paths, json
+      ? { quiet: true, onProgress: installProgressReporter(name) }
+      : undefined)
+    if (!json) output(installed, false)
     return
   }
   if (verb === 'remove' || verb === 'delete') {
@@ -409,12 +431,16 @@ async function commandInstallRecommended(args: string[], json: boolean): Promise
     return
   }
 
-  const runtime = await installRuntime(plan.runtime.source, plan.runtime.version, force, paths)
+  const runtime = await installRuntime(plan.runtime.source, plan.runtime.version, force, paths, json
+    ? { quiet: true, onProgress: installProgressReporter(plan.runtime.source) }
+    : undefined)
   const components = []
   for (const component of plan.components) {
-    components.push(await installComponent(component.name, component.version, force, paths))
+    components.push(await installComponent(component.name, component.version, force, paths, json
+      ? { quiet: true, onProgress: installProgressReporter(component.name) }
+      : undefined))
   }
-  output({ ...plan, runtime, components }, json)
+  if (!json) output({ ...plan, runtime, components }, false)
 }
 
 async function commandBuild(args: string[], json: boolean): Promise<void> {
@@ -570,12 +596,15 @@ async function commandRun(args: string[], json: boolean): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  let args = setHomeArgument(process.argv.slice(2))
+  let args = process.argv.slice(2)
+  jsonOutput = hasGlobalJsonFlag(args)
+  args = setHomeArgument(args)
   if (!args.length || args.includes('--help') || args.includes('-h')) {
     console.log(usage())
     return
   }
   const json = takeFlag(args, '--json')
+  jsonOutput = json
   const command = args.shift()
   // An existing Windows executable in command position is shorthand for `run`.
   // Requiring a regular file prevents an accidental typo from changing the
@@ -599,6 +628,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+  const message = error instanceof Error ? error.message : String(error)
+  if (jsonOutput) console.log(JSON.stringify({ error: message }))
+  else console.error(`Error: ${message}`)
   process.exitCode = 1
 })
