@@ -107,7 +107,7 @@ export async function findInstalledRuntime(source: RuntimeSource, version: strin
 async function resolveRelease(source: RuntimeSource, version: string): Promise<RuntimeRelease> {
   const releases = await listReleases(source, 100, true)
   const release = releases.find((candidate) => candidate.version === version)
-  if (!release) throw new Error(`Version "${version}" was not found for ${source}. Run "proton-cli runtime list --source ${source}".`)
+  if (!release) throw new Error(`Version "${version}" was not found for ${source}. Run "wur runtime list --source ${source}".`)
   return release
 }
 

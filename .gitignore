@@ -1,4 +1,7 @@
 node_modules/
 dist/
+release/
+.build/
+.cache/
 *.log
 .proton-cli/

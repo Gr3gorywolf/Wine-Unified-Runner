@@ -80,7 +80,7 @@ export interface ComponentRecommendation {
 }
 
 export function sourcesForPlatform(includeAll = false): RuntimeSourceInfo[] {
-  return Object.values(runtimeSources).filter((source) => includeAll || source.platforms.includes(process.platform))
+  return Object.values(runtimeSources).filter((source) => includeAll || canRunRuntimeOnThisSystem(source.id))
 }
 
 export function canRunRuntimeOnThisSystem(source: RuntimeSource): boolean {

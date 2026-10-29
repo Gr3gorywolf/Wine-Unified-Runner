@@ -26,7 +26,7 @@ function waitForProcessExit(child: ChildProcess, errorPrefix: string, closePipes
 }
 
 function steamClientPath(): string {
-  const configured = process.env.PROTON_CLI_STEAM_ROOT
+  const configured = process.env.WUR_STEAM_ROOT || process.env.PROTON_CLI_STEAM_ROOT
   if (configured) return configured
   const choices = [
     join(homedir(), '.steam', 'steam'),
@@ -71,7 +71,7 @@ export function buildLaunchEnvironment(container: ContainerConfig, runtime: Inst
     environment.PROTONPATH = runtime.path
     environment.STEAM_COMPAT_APP_ID ||= '0'
     environment.SteamAppId ||= environment.STEAM_COMPAT_APP_ID
-    environment.SteamGameId ||= `proton-cli-${gameId}`
+    environment.SteamGameId ||= `wur-${gameId}`
     environment.PROTON_LOG_DIR ||= container.prefix
     if (!launch.enableEsync) environment.PROTON_NO_ESYNC = '1'
     if (!launch.enableFsync) environment.PROTON_NO_FSYNC = '1'

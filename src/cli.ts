@@ -16,7 +16,6 @@ import {
   canRunRuntimeOnThisSystem,
   compatibleComponentRecommendations,
   componentNames,
-  runtimeSources,
   sourcesForPlatform
 } from './sources.js'
 import {
@@ -40,37 +39,81 @@ import {
 import { runRuntime, stopWineServer } from './launch.js'
 import { getPaths } from './paths.js'
 import { installRuntime, listInstalledRuntimes, listReleases, removeRuntime } from './runtime.js'
+import { isExecutableFallback } from './invocation.js'
 import type { ComponentName, ContainerConfig, RuntimeSource } from './types.js'
 
+const colorEnabled = process.env.NO_COLOR === undefined && process.env.TERM !== 'dumb' && (
+  process.env.FORCE_COLOR !== undefined && process.env.FORCE_COLOR !== '0' || Boolean(process.stdout.isTTY)
+)
+
+function color(code: number, text: string): string {
+  return colorEnabled ? `\u001B[${code}m${text}\u001B[0m` : text
+}
+
+const bold = (text: string): string => color(1, text)
+const dim = (text: string): string => color(2, text)
+const green = (text: string): string => color(32, text)
+const yellow = (text: string): string => color(33, text)
+const cyan = (text: string): string => color(36, text)
+const magenta = (text: string): string => color(35, text)
+
+function helpSection(title: string, commands: Array<[syntax: string, description: string]>): string {
+  return [cyan(bold(title)), ...commands.flatMap(([syntax, description]) => [green(`  ${syntax}`), dim(`      ${description}`)])].join('\n')
+}
+
 function usage(): string {
-  return `proton-cli — Proton/Wine containers inspired by Heroic
-
-Usage:
-  proton-cli runtime list [--source SOURCE] [--limit N] [--all] [--json]
-  proton-cli runtime install SOURCE [VERSION] [--force]
-  proton-cli runtime remove SOURCE [VERSION] [--json]
-  proton-cli proton list [--all] [--limit N] [--json]
-  proton-cli proton install SOURCE [VERSION] [--force]
-  proton-cli component list [--remote] [--all] [--name NAME] [--limit N] [--json]
-  proton-cli component install NAME [VERSION] [--force]
-  proton-cli component remove NAME [VERSION] [--json]
-  proton-cli install-recommended [--force] [--dry-run] [--json]
-  proton-cli build [--name NAME] [--json]
-  proton-cli suggest [--json]
-  proton-cli container create --name NAME [--runtime SOURCE/VERSION] [--component NAME=true] [--set PATH=VALUE] [--no-initialize]
-  proton-cli container list [--json]
-  proton-cli container show --name NAME [--json]
-  proton-cli container configure --name NAME --set PATH=VALUE [--set PATH=VALUE]
-  proton-cli container default [--name NAME]
-  proton-cli container remove --name NAME [--json]
-  proton-cli defaults show [--json]
-  proton-cli defaults set --set PATH=VALUE [--set PATH=VALUE]
-  proton-cli run EXECUTABLE [--container NAME] [--cwd DIRECTORY] [-- ARGUMENTS...]
-
-All state lives next to the compiled CLI: user/, runtimes/, components/, containers/, downloads/ and
-the JSON files are contained in the same folder. Container files are stored as
-containers/<name>/container.json. Use --home DIRECTORY or PROTON_CLI_HOME only when you
-explicitly want a different portable folder.`
+  return [
+    `${magenta(bold('WUR'))} ${dim('— Wine Unified Runner')}`,
+    dim('Portable Wine environments and Windows game launching for macOS and Linux.'),
+    '',
+    yellow(bold('USAGE')),
+    `  ${green('wur')} ${bold('<command>')} ${dim('[options]')}`,
+    '',
+    helpSection('LAUNCH A WINDOWS PROGRAM', [
+      ['wur run EXECUTABLE [--container NAME] [--cwd DIRECTORY] [-- ARGUMENTS...]', 'Launch an executable with the selected or default container.'],
+      ['wur WINDOWS-EXECUTABLE [--container NAME] [--cwd DIRECTORY] [-- ARGUMENTS...]', 'Shortcut for run when the first argument is an existing Windows-launchable file.']
+    ]),
+    '',
+    helpSection('RUNTIMES', [
+      ['wur runtime list [--source SOURCE] [--limit N] [--all] [--json]', 'List available runtime releases for this platform.'],
+      ['wur runtime installed [--json]', 'List locally installed runtimes.'],
+      ['wur runtime install [SOURCE] [VERSION] [--force]', 'Install the platform default, or a specific runtime; VERSION defaults to latest.'],
+      ['wur runtime remove SOURCE [VERSION] [--json]', 'Remove a managed runtime.']
+    ]),
+    '',
+    helpSection('COMPONENTS', [
+      ['wur component list [--remote] [--all] [--name NAME] [--limit N] [--json]', 'List installed components, or releases with --remote.'],
+      ['wur component install NAME [VERSION] [--force]', 'Download a component such as dxvk, vkd3d, or dxmt.'],
+      ['wur component remove NAME [VERSION] [--json]', 'Remove a managed component.'],
+      ['wur install-recommended [--force] [--dry-run] [--json]', 'Install the runtime and enabled components from config/defaults.json.']
+    ]),
+    '',
+    helpSection('CONTAINERS', [
+      ['wur container create --name NAME [--runtime SOURCE/VERSION] [--component NAME=true] [--set PATH=VALUE] [--no-initialize]', 'Create a Wine prefix and its container.json.'],
+      ['wur container list [--json]', 'List containers and show the current default.'],
+      ['wur container show --name NAME [--json]', 'Show one container configuration.'],
+      ['wur container configure --name NAME --set PATH=VALUE [--set PATH=VALUE]', 'Change validated container settings.'],
+      ['wur container default [--name NAME]', 'Show or select the default container.'],
+      ['wur container remove --name NAME [--json]', 'Remove a container and its prefix.'],
+      ['wur build [--name NAME] [--json]', 'Build container.json and a prefix from containers/<name>/config.json.']
+    ]),
+    '',
+    helpSection('CONFIGURATION AND DISCOVERY', [
+      ['wur suggest [--json]', 'Show compatible runtime and component recommendations.'],
+      ['wur defaults show [--json]', 'Show the platform-aware default container template.'],
+      ['wur defaults set --set PATH=VALUE [--set PATH=VALUE]', 'Change defaults for newly created containers.']
+    ]),
+    '',
+    helpSection('GLOBAL OPTIONS', [
+      ['--home DIRECTORY', 'Use another self-contained state directory for this invocation.'],
+      ['--json', 'Emit machine-readable JSON for commands that support output.'],
+      ['--', 'Pass the remaining arguments to the Windows program.'],
+      ['-h, --help', 'Show this help.']
+    ]),
+    '',
+    dim('State stays beside the CLI: user/, runtimes/, components/, containers/, downloads/, and config/.'),
+    dim('Use WUR_HOME to make another directory portable. Container files live at containers/<name>/container.json.')
+  ].join('\n')
 }
 
 function setHomeArgument(args: string[]): string[] {
@@ -81,7 +124,7 @@ function setHomeArgument(args: string[]): string[] {
   const token = next[index]
   const value = token.includes('=') ? token.slice('--home='.length) : next[index + 1]
   if (!value) throw new Error('--home requires a directory.')
-  process.env.PROTON_CLI_HOME = resolve(value)
+  process.env.WUR_HOME = resolve(value)
   next.splice(index, token.includes('=') ? 1 : 2)
   return next
 }
@@ -233,6 +276,9 @@ async function commandRuntime(args: string[], json: boolean): Promise<void> {
     const limit = Number(takeOption(args, '--limit') || '30')
     const all = takeFlag(args, '--all')
     if (args.length) throw new Error(`Unexpected argument: ${args[0]}`)
+    if (source && !all && !canRunRuntimeOnThisSystem(source)) {
+      throw new Error(`Runtime source "${source}" is not compatible with ${process.platform}/${process.arch}. Use --all only to inspect cross-platform releases.`)
+    }
     const releases = await listReleases(source, limit, all)
     output(releases.map((release) => ({
       source: release.source,
@@ -251,9 +297,13 @@ async function commandRuntime(args: string[], json: boolean): Promise<void> {
   }
   if (verb === 'install') {
     const force = takeFlag(args, '--force')
-    const source = asSource(args.shift() || '')
+    const source = asSource(args.shift() || defaultSourceForPlatform())
     const version = args.shift() || 'latest'
     if (args.length) throw new Error(`Unexpected argument: ${args[0]}`)
+    if (!canRunRuntimeOnThisSystem(source)) {
+      const alternatives = sourcesForPlatform().map((candidate) => candidate.id).join(', ')
+      throw new Error(`Runtime source "${source}" cannot run on ${process.platform}/${process.arch}. Use one of: ${alternatives || 'no supported runtime detected'}.`)
+    }
     output(await installRuntime(source, version, force, paths), json)
     return
   }
@@ -265,31 +315,6 @@ async function commandRuntime(args: string[], json: boolean): Promise<void> {
     return
   }
   throw new Error('Use runtime list, runtime installed, runtime install, or runtime remove.')
-}
-
-async function commandProton(args: string[], json: boolean): Promise<void> {
-  const verb = args.shift()
-  if (verb === 'list') {
-    const all = takeFlag(args, '--all')
-    const limit = Number(takeOption(args, '--limit') || '30')
-    if (args.length) throw new Error(`Unexpected argument: ${args[0]}`)
-    // `proton` is the convenient compatibility-layer command. On macOS its
-    // useful equivalents are Wine/GPTK rather than Linux-only Proton builds.
-    const sources = all
-      ? Object.keys(runtimeSources).map(asSource)
-      : sourcesForPlatform().filter((source) => canRunRuntimeOnThisSystem(source.id)).map((source) => source.id)
-    const releases = (await Promise.all(sources.map((source) => listReleases(source, limit, all)))).flat()
-    output(releases.map((release) => ({ source: release.source, version: release.version, date: release.date, size: bytes(release.size), latest: Boolean(release.latest) })), json)
-    return
-  }
-  if (verb === 'install') {
-    const force = takeFlag(args, '--force')
-    const source = asSource(args.shift() || defaultSourceForPlatform())
-    const version = args.shift() || 'latest'
-    output(await installRuntime(source, version, force, getPaths()), json)
-    return
-  }
-  throw new Error('Use proton list or proton install.')
 }
 
 async function commandComponent(args: string[], json: boolean): Promise<void> {
@@ -355,12 +380,12 @@ function commandSuggest(json: boolean): void {
     })),
     components: compatibleComponentRecommendations().map((component) => ({
       ...component,
-      install: `proton-cli component install ${component.name}`
+      install: `wur component install ${component.name}`
     })),
     protonNote: process.platform === 'darwin'
       ? 'Proton is a Linux runtime. On macOS use the Wine/GPTK runtime recommended above.'
       : undefined,
-    installRecommended: 'proton-cli install-recommended'
+    installRecommended: 'wur install-recommended'
   }, json)
 }
 
@@ -377,7 +402,7 @@ async function commandInstallRecommended(args: string[], json: boolean): Promise
     components: recommendedComponentNames(defaults.container)
   }
   if (!canRunRuntimeOnThisSystem(plan.runtime.source)) {
-    throw new Error(`The default runtime ${plan.runtime.source} cannot run on ${process.platform}/${process.arch}. Update defaults.json or run "proton-cli suggest".`)
+    throw new Error(`The default runtime ${plan.runtime.source} cannot run on ${process.platform}/${process.arch}. Update defaults.json or run "wur suggest".`)
   }
   if (dryRun) {
     output({ ...plan, dryRun: true }, json)
@@ -552,9 +577,12 @@ async function main(): Promise<void> {
   }
   const json = takeFlag(args, '--json')
   const command = args.shift()
+  // An existing Windows executable in command position is shorthand for `run`.
+  // Requiring a regular file prevents an accidental typo from changing the
+  // command parser's usual "unknown command" error into a game launch.
+  if (command && isExecutableFallback(command)) return await commandRun([command, ...args], json)
   switch (command) {
     case 'runtime': return await commandRuntime(args, json)
-    case 'proton': return await commandProton(args, json)
     case 'component': return await commandComponent(args, json)
     case 'install-recommended': return await commandInstallRecommended(args, json)
     case 'build': return await commandBuild(args, json)

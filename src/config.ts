@@ -136,7 +136,7 @@ export function containerFile(paths: Paths, name: string): string {
   return join(containerDirectory(paths, name), 'container.json')
 }
 
-/** The hand-authored, partial configuration consumed by `proton-cli build`. */
+/** The hand-authored, partial configuration consumed by `wur build`. */
 export function containerManifestFile(paths: Paths, name: string): string {
   return join(containerDirectory(paths, name), 'config.json')
 }
@@ -149,7 +149,7 @@ export function assertContainerName(name: string): void {
 
 export async function loadContainer(name: string, paths = getPaths()): Promise<ContainerConfig> {
   const file = containerFile(paths, name)
-  if (!existsSync(file)) throw new Error(`Container "${name}" does not exist. Create it with: proton-cli container create --name ${name}`)
+  if (!existsSync(file)) throw new Error(`Container "${name}" does not exist. Create it with: wur container create --name ${name}`)
   const raw = await readJson<ContainerConfig>(file)
   // Older container files cached installed-runtime implementation details.
   // A container is declarative: only source/version belong in its JSON. Keep

@@ -4,18 +4,32 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Paths } from './types.js'
 
-const moduleDirectory = dirname(fileURLToPath(import.meta.url))
+// Replaced at bundle time by scripts/build-binary.mjs. `typeof` keeps the
+// regular TypeScript/Node build safe when the compile-time constant is absent.
+declare const __WUR_STANDALONE__: boolean | undefined
+
+const standaloneBinary = typeof __WUR_STANDALONE__ !== 'undefined' && __WUR_STANDALONE__
+const moduleDirectory = standaloneBinary
+  ? dirname(process.execPath)
+  : dirname(fileURLToPath(import.meta.url))
 
 export function getPaths(): Paths {
-  const configuredRoot = process.env.PROTON_CLI_HOME
+  // PROTON_CLI_HOME remains a compatibility alias for pre-WUR installations.
+  const configuredRoot = process.env.WUR_HOME || process.env.PROTON_CLI_HOME
   const root = configuredRoot
     ? resolve(configuredRoot)
     // dist/src contains the executable module and dist is the portable CLI folder.
     // Keeping state here makes removing this folder a complete uninstall.
-    : resolve(moduleDirectory, '..')
+    : standaloneBinary
+      ? moduleDirectory
+      : resolve(moduleDirectory, '..')
 
-  const installedDefaults = resolve(moduleDirectory, '..', 'defaults.json')
-  const developmentDefaults = resolve(moduleDirectory, '..', 'resources', 'defaults.json')
+  const installedDefaults = standaloneBinary
+    ? resolve(moduleDirectory, 'defaults.json')
+    : resolve(moduleDirectory, '..', 'defaults.json')
+  const developmentDefaults = standaloneBinary
+    ? resolve(moduleDirectory, 'resources', 'defaults.json')
+    : resolve(moduleDirectory, '..', 'resources', 'defaults.json')
 
   return {
     root,

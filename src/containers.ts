@@ -99,7 +99,7 @@ async function prepareRuntimeComponents(container: ContainerConfig, paths: Paths
 export async function prepareContainer(container: ContainerConfig, paths = getPaths()): Promise<{ container: ContainerConfig; runtime: InstalledRuntime }> {
   if (!canRunRuntimeOnThisSystem(container.runtime.source)) {
     const alternatives = sourcesForPlatform().filter((source) => canRunRuntimeOnThisSystem(source.id)).map((source) => source.id).join(', ')
-    throw new Error(`${runtimeSources[container.runtime.source].label} cannot run on ${process.platform}/${process.arch}. Use one of: ${alternatives || 'no supported runtime detected'}. Run "proton-cli suggest" for guidance.`)
+    throw new Error(`${runtimeSources[container.runtime.source].label} cannot run on ${process.platform}/${process.arch}. Use one of: ${alternatives || 'no supported runtime detected'}. Run "wur suggest" for guidance.`)
   }
   const runtime = await resolvedRuntime(container, paths)
   await saveContainer(container, paths)

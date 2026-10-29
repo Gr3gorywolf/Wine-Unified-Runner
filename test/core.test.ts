@@ -8,6 +8,7 @@ import { containerManifestFile, loadAppConfig, loadContainer, loadDefaults, newC
 import { removeComponent } from '../src/components.js'
 import { buildContainer, createContainer, removeContainer } from '../src/containers.js'
 import { buildLaunchEnvironment, runRuntime } from '../src/launch.js'
+import { isExecutableFallback } from '../src/invocation.js'
 import { getPaths, readJson, writeJson } from '../src/paths.js'
 import { ensureSharedUserProfile } from '../src/profile.js'
 import { findRuntimeBinary, removeRuntime, runtimeId } from '../src/runtime.js'
@@ -57,9 +58,9 @@ const testDefaults: DefaultsFile = {
 }
 
 test('defaults create a portable container.json base', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'proton-cli-test-'))
-  const prior = process.env.PROTON_CLI_HOME
-  process.env.PROTON_CLI_HOME = home
+  const home = await mkdtemp(join(tmpdir(), 'wur-test-'))
+  const prior = process.env.WUR_HOME
+  process.env.WUR_HOME = home
   try {
     const paths = getPaths()
     const defaults = await loadDefaults(paths)
@@ -68,19 +69,19 @@ test('defaults create a portable container.json base', async () => {
     assert.equal(container.prefix, join(home, 'containers', 'my-game', 'prefix'))
     assert.equal(container.components.dxvk.enabled, true)
   } finally {
-    if (prior === undefined) delete process.env.PROTON_CLI_HOME
-    else process.env.PROTON_CLI_HOME = prior
+    if (prior === undefined) delete process.env.WUR_HOME
+    else process.env.WUR_HOME = prior
     await rm(home, { recursive: true, force: true })
   }
 })
 
 test('the compiled CLI keeps its default state beside the executable', () => {
-  const prior = process.env.PROTON_CLI_HOME
-  delete process.env.PROTON_CLI_HOME
+  const prior = process.env.WUR_HOME
+  delete process.env.WUR_HOME
   try {
     assert.equal(getPaths().root, resolve(process.cwd(), 'dist'))
   } finally {
-    if (prior !== undefined) process.env.PROTON_CLI_HOME = prior
+    if (prior !== undefined) process.env.WUR_HOME = prior
   }
 })
 
@@ -93,8 +94,25 @@ test('settings path parsing preserves JSON values', () => {
   assert.equal(runtimeId('ge-proton', 'GE-Proton10-1'), 'ge-proton--GE-Proton10-1')
 })
 
+test('an existing Windows-launchable file is eligible for the implicit run command', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'wur-invocation-'))
+  const extensions = ['com', 'exe', 'bat', 'cmd', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'msc', 'pif', 'scf', 'scr']
+  const directoryNamedExe = join(root, 'not-a-game.exe')
+  try {
+    await Promise.all(extensions.map((extension) => writeFile(join(root, `Game.${extension}`), '')))
+    await mkdir(directoryNamedExe)
+    for (const extension of extensions) assert.equal(isExecutableFallback(join(root, `Game.${extension}`)), true)
+    assert.equal(isExecutableFallback(join(root, 'Game.EXE')), true)
+    assert.equal(isExecutableFallback(join(root, 'missing.exe')), false)
+    assert.equal(isExecutableFallback(join(root, 'Game.msi')), false)
+    assert.equal(isExecutableFallback(directoryNamedExe), false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('macOS Wine bundles use the command-line loader instead of the Finder launcher', async () => {
-  const runtime = await mkdtemp(join(tmpdir(), 'proton-cli-runtime-'))
+  const runtime = await mkdtemp(join(tmpdir(), 'wur-runtime-'))
   const cliWine = join(runtime, 'Contents', 'Resources', 'wine', 'bin', 'wine64')
   const finderLauncher = join(runtime, 'Contents', 'MacOS', 'wine')
   try {
@@ -108,7 +126,7 @@ test('macOS Wine bundles use the command-line loader instead of the Finder launc
 })
 
 test('container runtime references remain declarative when legacy metadata is loaded and saved', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'proton-cli-runtime-ref-'))
+  const root = await mkdtemp(join(tmpdir(), 'wur-runtime-ref-'))
   const paths = portablePaths(root)
   try {
     await mkdir(join(paths.containers, 'portable'), { recursive: true })
@@ -143,7 +161,7 @@ test('runRuntime returns after its primary process exits even when a child keeps
     name: 'exit-test',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
-    prefix: '/tmp/proton-cli-exit-test',
+    prefix: '/tmp/wur-exit-test',
     architecture: 'win64',
     runtime: { source: 'wine-staging-macos', version: 'test' },
     components: {
@@ -183,7 +201,7 @@ test('runRuntime returns after its primary process exits even when a child keeps
 })
 
 test('all prefixes link the same Wine username to the shared portable user directory', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'proton-cli-shared-user-'))
+  const root = await mkdtemp(join(tmpdir(), 'wur-shared-user-'))
   const paths = portablePaths(root)
   const runtime = {
     id: 'wine-staging-macos--test',
@@ -219,7 +237,7 @@ test('all prefixes link the same Wine username to the shared portable user direc
 })
 
 test('remove operations delete only portable managed data and clear the default container', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'proton-cli-remove-'))
+  const root = await mkdtemp(join(tmpdir(), 'wur-remove-'))
   const paths = portablePaths(root)
   const runtimePath = join(paths.runtimes, runtimeId('ge-proton', 'latest'))
   const componentPath = join(paths.components, 'dxvk', 'test-version')
@@ -260,7 +278,7 @@ test('remove operations delete only portable managed data and clear the default 
 })
 
 test('build completes a partial config.json into a portable container definition', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'proton-cli-build-'))
+  const root = await mkdtemp(join(tmpdir(), 'wur-build-'))
   const paths = portablePaths(root)
   try {
     await mkdir(join(paths.containers, 'from-manifest'), { recursive: true })

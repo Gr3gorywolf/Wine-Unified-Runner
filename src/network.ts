@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process'
 
 const headers = {
   Accept: 'application/vnd.github+json',
-  'User-Agent': 'proton-cli-launch'
+  'User-Agent': 'wur-wine-unified-runner'
 }
 
 export async function fetchJson<T>(url: string): Promise<T> {

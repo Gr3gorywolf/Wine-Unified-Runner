@@ -1,129 +1,152 @@
-# proton-cli
+# WUR
 
-Una CLI de TypeScript para gestionar capas de compatibilidad y lanzar ejecutables Windows con contenedores reproducibles. Está basada en los proveedores, selección de assets, prefijos y variables de entorno que utiliza Heroic Games Launcher 2.22.4, sin requerir Electron ni una interfaz gráfica.
+**WUR — Wine Unified Runner** is a portable command-line tool for creating Wine environments and launching Windows games on macOS and Linux. It manages runtimes, components, Wine prefixes, and shared user data in one self-contained directory.
 
-En Linux maneja GE-Proton, Valve Proton, Proton-CachyOS y Wine-Lutris. En macOS usa las capas que Heroic soporta allí: Wine Staging, Wine-CrossOver y Game Porting Toolkit (GPTK). Proton es una capa Linux; por eso no se presenta como runtime ejecutable en macOS. `runtime list --all` permite inspeccionar todo el catálogo de Heroic desde cualquier plataforma.
+WUR follows the runtime providers, asset selection, prefix setup, and launch settings used by Heroic Games Launcher 2.22.4, without requiring Electron or a graphical interface.
 
-## Instalar y compilar
+## Platform support
+
+| Platform | Runnable layers |
+| --- | --- |
+| Linux | GE-Proton, Valve Proton, Proton-CachyOS, Wine-Lutris |
+| macOS | Wine Staging, Wine-CrossOver, Game Porting Toolkit (GPTK) |
+
+Runtime management is unified under `wur runtime`. Its default catalog contains Proton and Wine builds on Linux, and the applicable Wine or GPTK alternatives on macOS. Use `--all` to inspect the complete cross-platform catalog.
+
+## Install from source
 
 ```sh
 npm install
 npm run build
 npm link
-proton-cli --help
+wur --help
 ```
 
-El binario publicado es `proton-cli`. Para ejecutarlo desde el árbol de trabajo antes de enlazarlo:
+Before linking, run the compiled CLI directly:
 
 ```sh
 node dist/src/cli.js --help
 ```
 
-## Flujo habitual
+## Build a standalone binary
+
+The standalone binary embeds Node.js, so the destination computer does not need Node installed.
 
 ```sh
-# Ver la recomendación exacta para el SO y la arquitectura actuales.
-proton-cli suggest
+npm install
+npm run build-binary
+./release/wur --help
+```
 
-# Ver las versiones que publica cada proveedor compatible con el sistema actual.
-proton-cli runtime list
-proton-cli proton list                 # Proton en Linux; Wine/GPTK en macOS
-proton-cli runtime list --all          # también muestra las capas del otro SO
+`build-binary` produces `release/wur` for the current platform. On macOS it creates an ad-hoc-signed universal arm64/x86_64 binary; on Linux it creates a binary for the current architecture. `release/defaults.json` is copied next to it.
 
-# Descargar un runtime concreto o la última versión.
-proton-cli runtime install ge-proton latest
-proton-cli runtime install proton GE-Proton10-1
+Normal binary builds replace only `release/wur` and preserve the portable state around it: `user/`, runtimes, components, containers, and configuration. To recreate the entire release directory from scratch:
 
-# Ver e instalar los componentes compatibles y recomendados para este SO.
-proton-cli component list --remote
-proton-cli component list --remote --all # catálogo completo, incluido el otro SO
-proton-cli component install dxvk
+```sh
+npm run build-binary -- --clean
+```
 
-# Eliminar instalaciones autocontenidas. `delete` también es alias de `remove`.
-proton-cli runtime remove game-porting-toolkit latest
-proton-cli component remove dxvk-macos latest
+Build-time Node archives are downloaded from the official distribution, verified against `SHASUMS256.txt`, and cached under `.cache/node-binaries/`. Override the pinned build runtime only when needed with `WUR_NODE_VERSION`.
 
-# Instalar exactamente el runtime y los componentes habilitados en
-# config/defaults.json para esta plataforma.
-proton-cli install-recommended --dry-run
-proton-cli install-recommended
+## Quick start
 
-# Construir todos los contenedores declarados en containers/*/config.json,
-# o sólo uno concreto.
-proton-cli build
-proton-cli build --name cyberpunk
+```sh
+# See the compatible runtime and component recommendations for this system.
+wur suggest
 
-# Crear un prefijo/contenedor. --name es obligatorio.
-proton-cli container create --name cyberpunk --runtime ge-proton/latest \
+# Install exactly what config/defaults.json enables for this platform.
+wur install-recommended
+
+# The first run creates and prepares the default container automatically.
+wur run "/games/My Game/Game.exe" -- -windowed
+```
+
+The runtime defined by a container is installed automatically on first use when it is missing. If installation cannot complete, WUR stops before starting the game and reports the error.
+
+## Launch games
+
+```sh
+# Use the default container.
+wur run /games/Celeste/Celeste.exe
+
+# Select one container for this launch only.
+wur run /games/Cyberpunk/bin/Cyberpunk2077.exe --container cyberpunk -- -skipStartScreen
+
+# Use a different host working directory.
+wur run /games/setup.exe --container installers --cwd /games -- /silent
+```
+
+`run` is optional when the first argument is an existing Windows-launchable file:
+
+```sh
+wur /games/Celeste/Celeste.exe --container celeste
+```
+
+The shortcut accepts the standard Windows `PATHEXT` file types (`.com`, `.exe`, `.bat`, `.cmd`, `.vbs`, `.vbe`, `.js`, `.jse`, `.wsf`, `.wsh`, `.msc`) and Shell executable types (`.pif`, `.scf`, `.scr`). Pass program arguments after `--`.
+
+## Manage runtimes
+
+```sh
+# Releases compatible with the current platform.
+wur runtime list
+
+# Complete catalog, including the other platform.
+wur runtime list --all
+
+# Install the recommended runtime for this platform.
+wur runtime install
+
+# Install or remove a specific runtime.
+wur runtime install ge-proton latest
+wur runtime remove game-porting-toolkit latest
+
+# Inspect managed installations.
+wur runtime installed
+```
+
+There is no separate Proton command: Proton is one runtime kind among the sources managed by `wur runtime`.
+
+## Manage components
+
+```sh
+# Installed components, then available compatible releases.
+wur component list
+wur component list --remote
+wur component list --remote --all
+
+# Install or remove a component.
+wur component install dxvk
+wur component install dxmt
+wur component remove dxvk-macos latest
+```
+
+On macOS, the generic `dxvk` component resolves to `dxvk-macos`; on Linux it resolves to normal DXVK. DXMT is available for supported Wine Staging configurations. Proton includes its own graphics stack, so WUR does not overwrite it.
+
+## Containers and prefixes
+
+A container is a reproducible Wine prefix plus `container.json` under `containers/<name>/`.
+
+```sh
+# Create and initialize a prefix.
+wur container create --name cyberpunk --runtime ge-proton/latest \
   --component dxvk-nvapi=true \
   --set launch.enableWayland=true
 
-# Elegir el contenedor por defecto y ejecutar un .exe.
-proton-cli container default --name cyberpunk
-proton-cli run "/games/Cyberpunk 2077/bin/x64/Cyberpunk2077.exe" -- -skipStartScreen
+# Inspect and choose a default container.
+wur container list
+wur container show --name cyberpunk
+wur container default --name cyberpunk
 
-# Elimina container.json y todo el prefijo. Si era el predeterminado,
-# su selección se limpia y el próximo `run` creará uno nuevo.
-proton-cli container remove --name cyberpunk
-
-# O elegirlo sólo para una ejecución.
-proton-cli run /games/setup.exe --container installers -- /silent
+# Change settings or remove a whole prefix.
+wur container configure --name cyberpunk --set launch.enableHdr=true
+wur container remove --name cyberpunk
 ```
 
-El primer `run` sin `--container` crea e inicializa automáticamente un contenedor llamado `default`, lo fija como predeterminado, descarga el runtime configurado y crea el prefijo. Proton se invoca con `waitforexitandrun`; Wine/GPTK se invoca directamente. La salida del juego se mantiene conectada a la terminal.
+The runtime declaration is portable: it stores only `source` and `version`, never a path to a local runtime installation. WUR finds or installs that runtime when the container is built or launched.
 
-## Directorios y JSON
+### Build containers from a manifest
 
-La CLI es autocontenida por defecto. La plantilla `defaults.json` queda junto a la CLI y su copia editable, ya adaptada al SO, se guarda como `config/defaults.json`. Runtimes, componentes, descargas, configuración, perfil de usuario y contenedores permanecen todos dentro de la carpeta compilada `dist/`. No escribe en `~/.local/share`, `~/Library/Application Support` ni directorios globales del sistema.
-
-Todos los runtimes usan el mismo usuario de Windows, `user`. Cada prefijo expone `C:\\users\\user` mediante un enlace relativo a `dist/user/`, por lo que `AppData`, `Documents`, partidas guardadas y demás datos del perfil se comparten entre contenedores. Al preparar un prefijo antiguo, la CLI copia a ese perfil compartido los archivos que todavía no existan, conserva el perfil original como respaldo y no sigue los enlaces que Wine había creado hacia el home de macOS o Linux.
-
-`proton-cli install-recommended` siempre toma su plan de ese `config/defaults.json`: instala el runtime definido en `container.runtime` y sólo los componentes cuyo campo `enabled` sea `true`. Así, cambiar el JSON (o usar `proton-cli defaults set`) cambia la siguiente instalación recomendada. `--dry-run` muestra el plan sin descargar nada. En macOS, el selector genérico `dxvk` se resuelve como `dxvk-macos`; en Linux se resuelve como DXVK normal.
-
-Sólo si quieres separar explícitamente los datos de la instalación puedes definir `PROTON_CLI_HOME=/ruta/a/proton-cli` o usar `--home /ruta`.
-
-También puedes usar `--home /ruta` en un único comando. La estructura resultante es:
-
-```text
-dist/
-  defaults.json
-  user/
-    AppData/
-    Documents/
-    Saved Games/
-  config/
-    config.json
-    defaults.json
-  runtimes/
-  components/
-  containers/
-    nombre/
-      container.json
-      prefix/
-```
-
-Cada contenedor es independiente: su archivo es `containers/<nombre>/container.json` y su prefijo Wine está en `containers/<nombre>/prefix`. El archivo contiene runtime, versión, componentes, arquitectura y opciones de lanzamiento. `proton-cli suggest` recomienda los valores válidos para el SO actual: Linux sugiere GE-Proton y DXVK/VKD3D; macOS en Apple Silicon sugiere GPTK, y en Intel Wine Staging. Un ejemplo reducido:
-
-```json
-{
-  "name": "cyberpunk",
-  "prefix": "/ruta/proton-cli/containers/cyberpunk/prefix",
-  "runtime": { "source": "ge-proton", "version": "GE-Proton10-1" },
-  "components": {
-    "dxvk": { "enabled": true, "version": "latest" },
-    "dxvkNvapi": { "enabled": true, "version": "latest" }
-  },
-  "launch": {
-    "enableEsync": true,
-    "enableWayland": true,
-    "environment": { "DXVK_ASYNC": "1" }
-  }
-}
-```
-
-La sección `runtime` es siempre declarativa y sólo contiene `source` y `version`; no guarda rutas ni IDs de instalaciones locales. Al crear, construir o ejecutar un contenedor, la CLI busca primero ese runtime en `runtimes/`. Si no está, intenta instalarlo automáticamente y explica el fallo de descarga o de versión antes de iniciar el juego.
-
-También puedes declarar un contenedor sin metadatos ni valores repetidos en `containers/<nombre>/config.json`, y construirlo después con `proton-cli build`. El manifiesto admite sólo `runtime`, `architecture`, `components` y `launch`; los campos que omitas se toman de `config/defaults.json`. El nombre y el prefijo siempre proceden de la carpeta, por lo que no puede escribir fuera de la instalación portátil.
+Create `containers/<name>/config.json` with only the settings that differ from the defaults:
 
 ```json
 {
@@ -138,26 +161,71 @@ También puedes declarar un contenedor sin metadatos ni valores repetidos en `co
 }
 ```
 
-`build` genera o actualiza `container.json`, descarga el runtime necesario, crea el prefijo y aplica los componentes habilitados. Si no pasas `--name`, procesa cada subcarpeta de `containers/` que incluya un `config.json`.
-
-Puedes editarlo directamente o mantener cambios validados desde la CLI:
+Then build one or every manifest:
 
 ```sh
-proton-cli defaults set --set runtime.source='"ge-proton"'
-proton-cli container configure --name cyberpunk \
-  --set launch.enableHdr=true \
-  --set launch.environment.DXVK_ASYNC='"1"'
-proton-cli container show --name cyberpunk --json
+wur build --name my-game
+wur build
 ```
 
-Las opciones de `launch` mapean las mismas configuraciones de Heroic: esync/fsync/msync, Wayland, HDR, WoW64, FSR, límite DXVK, HUD/FPS, NVAPI y variables de entorno. DXVK/VKD3D se instalan en prefijos Wine. Un runtime Proton ya los trae integrados, así que la CLI no los sobreescribe. EAC y BattlEye se descargan desde el listado de runtimes de Lutris si están habilitados en un contenedor Linux. DXMT está disponible como componente descargable para construir o inspeccionar una variante Wine Staging de macOS; GPTK se mantiene intacto, igual que en Heroic.
+WUR completes the missing fields from `config/defaults.json`, writes `container.json`, installs the requested runtime and components, and prepares the prefix.
 
-## Integridad y comportamiento de descarga
+## Defaults and recommendations
 
-Las versiones se consultan directamente desde las APIs de GitHub que usa Heroic. Las descargas GE-Proton y Proton-CachyOS verifican SHA-512 cuando el release publica el archivo de checksum. La extracción ocurre primero en un directorio temporal y el runtime o componente sólo se mueve a su ubicación final cuando termina correctamente.
+`config/defaults.json` is the editable platform-aware template used for new containers. `install-recommended` uses that same file, so the enabled component set and runtime are always explicit.
 
-`runtime installed` y `component list` muestran las instalaciones locales. Todos los comandos que aceptan listados tienen salida de máquina con `--json`.
+```sh
+wur defaults show
+wur defaults set --set runtime.source='"ge-proton"'
+wur install-recommended --dry-run
+wur install-recommended
+```
 
-## Licencia y atribución
+## Portable data and shared Windows user
 
-Este proyecto conserva licencia GPL-3.0-only por su implementación basada en el comportamiento y los proveedores de [Heroic Games Launcher](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher), versión de referencia 2.22.4. Los runtimes, componentes y sus licencias siguen perteneciendo a sus respectivos proyectos y proveedores.
+By default, WUR keeps all state beside the Node distribution (`dist/`) or standalone binary (`release/`):
+
+```text
+release/
+  wur
+  defaults.json
+  user/
+    AppData/
+    Documents/
+    Saved Games/
+  config/
+    config.json
+    defaults.json
+  runtimes/
+  components/
+  containers/
+    game-name/
+      container.json
+      prefix/
+```
+
+Every prefix exposes the same Windows user, `C:\\users\\user`, through a link to the portable `user/` directory. Saves, Documents, AppData, and similar Windows profile data are therefore shared across containers and runtimes.
+
+To place state elsewhere for one command, use `--home DIRECTORY`. To make another directory the default, set `WUR_HOME`. The former `PROTON_CLI_HOME` variable remains a compatibility alias for older installations.
+
+## Output and global options
+
+Commands that return lists or structured values support `--json`. Use `--home DIRECTORY` before the program separator, and use `--` to pass remaining arguments to the Windows executable.
+
+```sh
+wur runtime list --json
+wur --home /Volumes/Games/wur container list
+wur run game.exe -- --safe-mode
+```
+
+Run `wur --help` for the color-coded command reference grouped by launch, runtimes, components, containers, and configuration. Colors are disabled automatically when output is redirected, or when `NO_COLOR` is set.
+
+## Download integrity
+
+Release information comes from the GitHub APIs used by Heroic. GE-Proton and Proton-CachyOS downloads verify SHA-512 when the release provides a checksum. Every download extracts into a temporary directory and moves into the managed location only after successful completion.
+
+## License and attribution
+
+WUR is GPL-3.0-only. It is based on the behavior and providers of [Heroic Games Launcher](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher), reference version 2.22.4. Runtimes and components remain subject to their respective licenses.
+
+WUR is an independent project and is not affiliated with WineHQ, Heroic Games Launcher, or any runtime provider.
