@@ -1,5 +1,5 @@
 import type { Command } from 'commander'
-import { isRuntimeSource } from '../services/config.js'
+import { isRuntimeSource } from '../services/sources.js'
 import { componentNames } from '../services/sources.js'
 import type {
   ComponentName,

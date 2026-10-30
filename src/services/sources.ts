@@ -1,13 +1,14 @@
-import type { ComponentName, RuntimeKind, RuntimeSource } from '../types/index.js'
+import type { ComponentName, ComponentRecommendation, RuntimeSource, RuntimeSourceInfo } from '../types/index.js'
 
-export interface RuntimeSourceInfo {
-  id: RuntimeSource
-  label: string
-  apiUrl: string
-  kind: RuntimeKind
-  platforms: NodeJS.Platform[]
-  stagingOnly?: boolean
-}
+const runtimeSourceNames = new Set<RuntimeSource>([
+  'ge-proton',
+  'proton',
+  'proton-cachyos',
+  'wine-lutris',
+  'wine-crossover',
+  'wine-staging-macos',
+  'game-porting-toolkit'
+])
 
 export const runtimeSources: Record<RuntimeSource, RuntimeSourceInfo> = {
   'ge-proton': {
@@ -73,10 +74,8 @@ export const componentNames: ComponentName[] = [
   'umu'
 ]
 
-export interface ComponentRecommendation {
-  name: ComponentName
-  recommended: boolean
-  note: string
+export function isRuntimeSource(value: string): value is RuntimeSource {
+  return runtimeSourceNames.has(value as RuntimeSource)
 }
 
 export function sourcesForPlatform(includeAll = false): RuntimeSourceInfo[] {

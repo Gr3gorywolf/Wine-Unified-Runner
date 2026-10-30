@@ -3,7 +3,6 @@ import { mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Paths } from '../types/index.js'
-export { readJson, writeJson } from '../utils/json.js'
 
 // Replaced at bundle time by scripts/build-binary.mjs. `typeof` keeps the
 // regular TypeScript/Node build safe when the compile-time constant is absent.

@@ -2,10 +2,6 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
-  assertContainerName,
-  containerDirectory,
-  containerFile,
-  containerManifestFile,
   loadAppConfig,
   loadContainer,
   loadDefaults,
@@ -20,7 +16,14 @@ import { ensurePaths, getPaths } from './paths.js'
 import { ensureSharedUserProfile } from './profile.js'
 import { findInstalledRuntime, installRuntime } from './runtime.js'
 import { canRunRuntimeOnThisSystem, runtimeSources, sourcesForPlatform } from './sources.js'
-import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from '../types/index.js'
+import type {
+  ContainerConfig,
+  ContainerWineComponentRequest,
+  DefaultsFile,
+  InstalledRuntime,
+  Paths
+} from '../types/index.js'
+import { assertContainerName, containerDirectory, containerFile, containerManifestFile } from '../utils/filesystem.js'
 
 export async function listContainers(paths = getPaths()): Promise<ContainerConfig[]> {
   await ensurePaths(paths)
@@ -86,10 +89,7 @@ async function prepareWineComponents(
     // Heroic avoids changing GPTK's D3DMetal setup for the same reason.
     return
   }
-  const requested: Array<{
-    selection: keyof ContainerConfig['components']
-    name: 'dxvk' | 'dxvk-nvapi' | 'vkd3d' | 'dxvk-macos'
-  }> = [
+  const requested: ContainerWineComponentRequest[] = [
     { selection: 'dxvk', name: process.platform === 'darwin' ? 'dxvk-macos' : 'dxvk' },
     { selection: 'dxvkNvapi', name: 'dxvk-nvapi' },
     { selection: 'vkd3d', name: 'vkd3d' }

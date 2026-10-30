@@ -8,7 +8,6 @@ import { promisify } from 'node:util'
 import test from 'node:test'
 import {
   applyGameOverrides,
-  containerManifestFile,
   loadAppConfig,
   loadContainer,
   loadDefaults,
@@ -23,7 +22,9 @@ import { removeComponent } from '../src/services/components.js'
 import { buildContainer, createContainer, removeContainer } from '../src/services/containers.js'
 import { buildLaunchEnvironment, runRuntime } from '../src/services/launch.js'
 import { isExecutableFallback } from '../src/services/invocation.js'
-import { getPaths, readJson, writeJson } from '../src/services/paths.js'
+import { getPaths } from '../src/services/paths.js'
+import { readJson, writeJson } from '../src/utils/json.js'
+import { containerManifestFile } from '../src/utils/filesystem.js'
 import { ensureSharedUserProfile } from '../src/services/profile.js'
 import { findRuntimeBinary, removeRuntime, runtimeId } from '../src/services/runtime.js'
 import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from '../src/types/index.js'

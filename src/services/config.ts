@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
-import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
+import { ensurePaths, getPaths } from './paths.js'
+import { isRuntimeSource } from './sources.js'
 import {
   appConfigSchema,
   containerConfigSchema,
@@ -10,7 +11,15 @@ import {
   defaultsFileSchema
 } from '../schemas/index.js'
 import { GAME_OVERRIDE_FILE, overrideLaunchBooleanKeys, parseGameOverrides } from '../utils/configOverrides.js'
+import {
+  assertContainerName,
+  containerDirectory,
+  containerFile,
+  containerManifestFile,
+  gameOverrideFile
+} from '../utils/filesystem.js'
 import { readValidatedJson } from '../utils/json.js'
+import { readJson, writeJson } from '../utils/json.js'
 import { onlyKeys } from '../utils/objects.js'
 import { parseWithSchema } from '../utils/validation.js'
 export { parseJsonValue, parseSetExpression, setAtPath } from '../utils/settings.js'
@@ -26,20 +35,6 @@ import type {
   Paths,
   RuntimeSource
 } from '../types/index.js'
-
-const validSources = new Set<RuntimeSource>([
-  'ge-proton',
-  'proton',
-  'proton-cachyos',
-  'wine-lutris',
-  'wine-crossover',
-  'wine-staging-macos',
-  'game-porting-toolkit'
-])
-
-export function isRuntimeSource(value: string): value is RuntimeSource {
-  return validSources.has(value as RuntimeSource)
-}
 
 export function defaultSourceForPlatform(): RuntimeSource {
   if (process.platform === 'darwin') {
@@ -130,23 +125,13 @@ export async function saveAppConfig(config: AppConfig, paths = getPaths()): Prom
   await writeJson(paths.appConfig, config)
 }
 
-export function containerDirectory(paths: Paths, name: string): string {
-  assertContainerName(name)
-  return join(paths.containers, name)
-}
-
-export function containerFile(paths: Paths, name: string): string {
-  return join(containerDirectory(paths, name), 'container.json')
-}
-
-/** The hand-authored, partial configuration consumed by `wur build`. */
-export function containerManifestFile(paths: Paths, name: string): string {
-  return join(containerDirectory(paths, name), 'config.json')
-}
-
-export function gameOverrideFile(executable: string): string {
-  return join(dirname(executable), GAME_OVERRIDE_FILE)
-}
+export {
+  assertContainerName,
+  containerDirectory,
+  containerFile,
+  containerManifestFile,
+  gameOverrideFile
+} from '../utils/filesystem.js'
 
 /** Creates the editable sidecar when absent, then parses the game's settings. */
 export async function loadGameOverrides(
@@ -191,12 +176,6 @@ export function applyGameOverrides(container: ContainerConfig, overrides: GameOv
 
 export function hasGameLaunchOverrides(overrides: GameOverrides): boolean {
   return Boolean(overrides.runtime || overrides.components || overrides.launch)
-}
-
-export function assertContainerName(name: string): void {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name)) {
-    throw new Error('Container name must be 1–64 characters of letters, numbers, dot, underscore, or hyphen.')
-  }
 }
 
 export async function loadContainer(name: string, paths = getPaths()): Promise<ContainerConfig> {

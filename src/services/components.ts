@@ -1,31 +1,22 @@
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir, readdir, rename, rm } from 'node:fs/promises'
+import { mkdir, readdir, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { downloadFile, extractArchive, fetchJson } from './network.js'
-import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
+import { ensurePaths, getPaths } from './paths.js'
 import { compatibleComponentRecommendations, componentNames, isArchiveAsset } from './sources.js'
 import { componentReleaseSchema, installedComponentSchema } from '../schemas/index.js'
-import type { ComponentName, ComponentRelease, InstallOptions, InstalledComponent, Paths } from '../types/index.js'
+import type {
+  ComponentName,
+  ComponentRelease,
+  GithubAsset,
+  GithubRelease,
+  InstallOptions,
+  InstalledComponent,
+  LutrisRuntime
+} from '../types/index.js'
+import { componentMetadataFile, componentPath, copyDllDirectory, findDirectory } from '../utils/filesystem.js'
+import { readJson, writeJson } from '../utils/json.js'
 import { parseWithSchema } from '../utils/validation.js'
-
-interface GithubAsset {
-  name: string
-  browser_download_url: string
-  size: number
-}
-
-interface GithubRelease {
-  tag_name: string
-  published_at: string
-  html_url: string
-  assets: GithubAsset[]
-}
-
-interface LutrisRuntime {
-  name: string
-  url: string
-  created_at?: string
-}
 
 const githubComponents: Partial<
   Record<ComponentName, { apiUrl: string; asset: (asset: GithubAsset) => boolean; strip: number }>
@@ -63,14 +54,6 @@ const lutrisComponentMap: Partial<Record<ComponentName, string>> = {
   'eac-runtime': 'eac_runtime',
   'battleye-runtime': 'battleye_runtime',
   umu: 'umu'
-}
-
-function componentPath(paths: Paths, name: ComponentName, version: string): string {
-  return join(paths.components, name, version.replace(/[^A-Za-z0-9._-]+/g, '_'))
-}
-
-function metadataFile(path: string): string {
-  return join(path, 'component.json')
 }
 
 export async function listComponentReleases(
@@ -127,7 +110,7 @@ export async function listInstalledComponents(paths = getPaths()): Promise<Insta
     if (!existsSync(parent)) continue
     for (const entry of await readdir(parent, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
-      const file = metadataFile(join(parent, entry.name))
+      const file = componentMetadataFile(join(parent, entry.name))
       if (!existsSync(file)) continue
       try {
         listed.push(parseWithSchema(installedComponentSchema, await readJson<unknown>(file), file))
@@ -197,15 +180,15 @@ export async function installComponent(
       installedAt: new Date().toISOString(),
       release: { date: release.date, download: release.download, notesUrl: release.notesUrl }
     }
-    await writeJson(metadataFile(staging), installed)
+    await writeJson(componentMetadataFile(staging), installed)
     await mkdir(join(paths.components, name), { recursive: true })
     if (existsSync(destination)) {
       if (!force) {
         options.onProgress?.(100)
         return parseWithSchema(
           installedComponentSchema,
-          await readJson<unknown>(metadataFile(destination)),
-          metadataFile(destination)
+          await readJson<unknown>(componentMetadataFile(destination)),
+          componentMetadataFile(destination)
         )
       }
       await rm(destination, { recursive: true, force: true })
@@ -237,38 +220,6 @@ export async function removeComponent(
   if (!existsSync(target)) throw new Error(`Component metadata exists, but its managed files are missing: ${target}`)
   await rm(target, { recursive: true, force: false })
   return { name: installed.name, version: installed.version, path: target }
-}
-
-async function findDirectory(root: string, names: string[]): Promise<string | undefined> {
-  const queue: Array<{ path: string; depth: number }> = [{ path: root, depth: 0 }]
-  while (queue.length) {
-    const current = queue.shift()!
-    if (current.depth > 4) continue
-    let entries
-    try {
-      entries = await readdir(current.path, { withFileTypes: true })
-    } catch {
-      continue
-    }
-    for (const entry of entries) {
-      const child = join(current.path, entry.name)
-      if (entry.isDirectory() && names.includes(entry.name)) return child
-      if (entry.isDirectory()) queue.push({ path: child, depth: current.depth + 1 })
-    }
-  }
-  return undefined
-}
-
-async function copyDllDirectory(source: string | undefined, destination: string): Promise<string[]> {
-  if (!source) return []
-  await mkdir(destination, { recursive: true })
-  const copied: string[] = []
-  for (const entry of await readdir(source, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.dll')) continue
-    await copyFile(join(source, entry.name), join(destination, entry.name))
-    copied.push(entry.name)
-  }
-  return copied
 }
 
 /** Copies a downloaded DXVK-family component into a Wine prefix. Registry overrides are applied by the caller. */

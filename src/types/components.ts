@@ -39,6 +39,13 @@ export interface ContainerComponents {
   battleyeRuntime: ComponentSelection
 }
 
+export type WineDllComponentName = 'dxvk' | 'dxvk-nvapi' | 'vkd3d' | 'dxvk-macos'
+
+export interface ContainerWineComponentRequest {
+  selection: keyof ContainerComponents
+  name: WineDllComponentName
+}
+
 export interface InstallOptions {
   /** Receives an integer percentage from 0 through 100. */
   onProgress?: (progress: number) => void

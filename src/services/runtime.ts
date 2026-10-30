@@ -1,26 +1,27 @@
 import { existsSync } from 'node:fs'
 import { chmod, readdir, rename, rm } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
-import { isRuntimeSource } from './config.js'
 import { downloadFile, extractArchive, fetchJson, verifySha512 } from './network.js'
-import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
-import { assetMatchesArchitecture, isArchiveAsset, runtimeSources, sourcesForPlatform } from './sources.js'
+import { ensurePaths, getPaths } from './paths.js'
+import {
+  assetMatchesArchitecture,
+  isArchiveAsset,
+  isRuntimeSource,
+  runtimeSources,
+  sourcesForPlatform
+} from './sources.js'
 import { installedRuntimeSchema, runtimeReleaseSchema } from '../schemas/index.js'
-import type { InstallOptions, InstalledRuntime, Paths, RuntimeRelease, RuntimeSource } from '../types/index.js'
+import type {
+  GithubAsset,
+  GithubRelease,
+  InstallOptions,
+  InstalledRuntime,
+  RuntimeRelease,
+  RuntimeSource
+} from '../types/index.js'
+import { readJson, writeJson } from '../utils/json.js'
+import { runtimeMetadataFile } from '../utils/filesystem.js'
 import { parseWithSchema } from '../utils/validation.js'
-
-interface GithubAsset {
-  name: string
-  browser_download_url: string
-  size: number
-}
-
-interface GithubRelease {
-  tag_name: string
-  published_at: string
-  html_url: string
-  assets: GithubAsset[]
-}
 
 function selectAsset(source: RuntimeSource, release: GithubRelease): GithubAsset | undefined {
   if (runtimeSources[source].stagingOnly) {
@@ -73,17 +74,13 @@ export function runtimeId(source: RuntimeSource, version: string): string {
   return `${source}--${version.replace(/[^A-Za-z0-9._-]+/g, '_')}`
 }
 
-function metadataFile(path: string): string {
-  return join(path, 'runtime.json')
-}
-
 export async function listInstalledRuntimes(paths = getPaths()): Promise<InstalledRuntime[]> {
   await ensurePaths(paths)
   const entries = await readdir(paths.runtimes, { withFileTypes: true })
   const installed: InstalledRuntime[] = []
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
-    const metadata = metadataFile(join(paths.runtimes, entry.name))
+    const metadata = runtimeMetadataFile(join(paths.runtimes, entry.name))
     if (!existsSync(metadata)) continue
     try {
       const runtime = parseWithSchema(installedRuntimeSchema, await readJson<unknown>(metadata), metadata)
@@ -247,14 +244,14 @@ export async function installRuntime(
       installedAt: new Date().toISOString(),
       release: { date: release.date, download: release.download, notesUrl: release.notesUrl }
     }
-    await writeJson(metadataFile(staging), installed)
+    await writeJson(runtimeMetadataFile(staging), installed)
     if (existsSync(destination)) {
       if (!force) {
         options.onProgress?.(100)
         return parseWithSchema(
           installedRuntimeSchema,
-          await readJson<unknown>(metadataFile(destination)),
-          metadataFile(destination)
+          await readJson<unknown>(runtimeMetadataFile(destination)),
+          runtimeMetadataFile(destination)
         )
       }
       await rm(destination, { recursive: true, force: true })
@@ -262,7 +259,7 @@ export async function installRuntime(
     await rename(staging, destination)
     options.onProgress?.(100)
     if (!options.quiet) console.error(`Installed ${installed.id} in ${destination}`)
-    return parseWithSchema(installedRuntimeSchema, installed, metadataFile(staging))
+    return parseWithSchema(installedRuntimeSchema, installed, runtimeMetadataFile(staging))
   } catch (error) {
     await rm(staging, { recursive: true, force: true })
     throw error

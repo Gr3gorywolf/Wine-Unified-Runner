@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process'
 import { PassThrough } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import axios from 'axios'
+import type { DownloadOptions } from '../types/index.js'
 
 const headers = {
   Accept: 'application/vnd.github+json',
@@ -36,11 +37,6 @@ function requestError(error: unknown, url: string): Error {
     return new Error(`Request failed (${status}) for ${url}`)
   }
   return error instanceof Error ? error : new Error(String(error))
-}
-
-export interface DownloadOptions {
-  onProgress?: (progress: number) => void
-  quiet?: boolean
 }
 
 export async function downloadFile(
