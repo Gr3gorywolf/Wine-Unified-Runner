@@ -1,6 +1,6 @@
 import type { Command } from 'commander'
-import { isRuntimeSource } from '../config.js'
-import { componentNames } from '../sources.js'
+import { isRuntimeSource } from '../services/config.js'
+import { componentNames } from '../services/sources.js'
 import type {
   ComponentName,
   ContainerConfig,

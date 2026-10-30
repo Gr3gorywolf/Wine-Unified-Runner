@@ -1,5 +1,5 @@
-import { loadDefaults, saveDefaults } from '../config.js'
-import { getPaths } from '../paths.js'
+import { loadDefaults, saveDefaults } from '../services/config.js'
+import { getPaths } from '../services/paths.js'
 import type { SettingsOptions } from '../types/index.js'
 import { output } from '../utils/output.js'
 import { parseSetExpression, setAtPath } from '../utils/settings.js'

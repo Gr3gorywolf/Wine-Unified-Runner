@@ -1,8 +1,12 @@
-import { installComponent } from '../components.js'
-import { defaultSourceForPlatform, loadDefaults } from '../config.js'
-import { getPaths } from '../paths.js'
-import { installRuntime } from '../runtime.js'
-import { canRunRuntimeOnThisSystem, compatibleComponentRecommendations, sourcesForPlatform } from '../sources.js'
+import { installComponent } from '../services/components.js'
+import { defaultSourceForPlatform, loadDefaults } from '../services/config.js'
+import { getPaths } from '../services/paths.js'
+import { installRuntime } from '../services/runtime.js'
+import {
+  canRunRuntimeOnThisSystem,
+  compatibleComponentRecommendations,
+  sourcesForPlatform
+} from '../services/sources.js'
 import type { RecommendedOptions } from '../types/index.js'
 import { recommendedComponentNames } from '../utils/cli.js'
 import { installProgressReporter, output } from '../utils/output.js'

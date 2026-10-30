@@ -1,6 +1,11 @@
-import { installComponent, listComponentReleases, listInstalledComponents, removeComponent } from '../components.js'
-import { getPaths } from '../paths.js'
-import { compatibleComponentRecommendations } from '../sources.js'
+import {
+  installComponent,
+  listComponentReleases,
+  listInstalledComponents,
+  removeComponent
+} from '../services/components.js'
+import { getPaths } from '../services/paths.js'
+import { compatibleComponentRecommendations } from '../services/sources.js'
 import type { ComponentListOptions, ForceOptions } from '../types/index.js'
 import { parseComponentName } from '../utils/cli.js'
 import { formatBytes, installProgressReporter, output } from '../utils/output.js'

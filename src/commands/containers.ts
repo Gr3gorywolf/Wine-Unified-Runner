@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { loadContainer, parseRuntimeReference, saveContainer } from '../config.js'
+import { loadContainer, parseRuntimeReference, saveContainer } from '../services/config.js'
 import {
   buildContainer,
   createContainer,
@@ -8,8 +8,8 @@ import {
   listContainers,
   removeContainer,
   setDefaultContainer
-} from '../containers.js'
-import { getPaths } from '../paths.js'
+} from '../services/containers.js'
+import { getPaths } from '../services/paths.js'
 import type {
   BuildOptions,
   ContainerConfigureOptions,

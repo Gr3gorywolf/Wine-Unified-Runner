@@ -3,7 +3,7 @@ import { copyFile, lstat, mkdir, readlink, readdir, rm, symlink } from 'node:fs/
 import { dirname, join, relative, resolve } from 'node:path'
 import { SHARED_WINE_USERNAME } from './launch.js'
 import { getPaths } from './paths.js'
-import type { ContainerConfig, InstalledRuntime, Paths } from './types/index.js'
+import type { ContainerConfig, InstalledRuntime, Paths } from '../types/index.js'
 
 const profileDirectories = [
   'AppData/Local',

@@ -2,8 +2,8 @@ import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Paths } from './types/index.js'
-export { readJson, writeJson } from './utils/json.js'
+import type { Paths } from '../types/index.js'
+export { readJson, writeJson } from '../utils/json.js'
 
 // Replaced at bundle time by scripts/build-binary.mjs. `typeof` keeps the
 // regular TypeScript/Node build safe when the compile-time constant is absent.
@@ -17,24 +17,24 @@ export function getPaths(): Paths {
   const configuredRoot = process.env.WUR_HOME || process.env.PROTON_CLI_HOME
   const root = configuredRoot
     ? resolve(configuredRoot)
-    : // dist/src contains the executable module and dist is the portable CLI folder.
+    : // dist/src/services contains this module and dist is the portable CLI folder.
       // Keeping state here makes removing this folder a complete uninstall.
       standaloneBinary
       ? moduleDirectory
-      : resolve(moduleDirectory, '..')
+      : resolve(moduleDirectory, '..', '..')
 
   const installedDefaults = standaloneBinary
     ? resolve(moduleDirectory, 'defaults.json')
-    : resolve(moduleDirectory, '..', 'defaults.json')
+    : resolve(moduleDirectory, '..', '..', 'defaults.json')
   const developmentDefaults = standaloneBinary
     ? resolve(moduleDirectory, 'resources', 'defaults.json')
-    : resolve(moduleDirectory, '..', 'resources', 'defaults.json')
+    : resolve(moduleDirectory, '..', '..', 'resources', 'defaults.json')
   const installedOverrideTemplate = standaloneBinary
     ? resolve(moduleDirectory, 'wur-overrides.template.ini')
-    : resolve(moduleDirectory, '..', 'wur-overrides.template.ini')
+    : resolve(moduleDirectory, '..', '..', 'wur-overrides.template.ini')
   const developmentOverrideTemplate = standaloneBinary
     ? resolve(moduleDirectory, 'resources', 'wur-overrides.template.ini')
-    : resolve(moduleDirectory, '..', 'resources', 'wur-overrides.template.ini')
+    : resolve(moduleDirectory, '..', '..', 'resources', 'wur-overrides.template.ini')
 
   return {
     root,

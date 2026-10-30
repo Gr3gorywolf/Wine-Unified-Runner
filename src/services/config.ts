@@ -8,13 +8,13 @@ import {
   containerManifestSchema,
   containerRuntimeRefSchema,
   defaultsFileSchema
-} from './schemas/index.js'
-import { GAME_OVERRIDE_FILE, overrideLaunchBooleanKeys, parseGameOverrides } from './utils/configOverrides.js'
-import { readValidatedJson } from './utils/json.js'
-import { onlyKeys } from './utils/objects.js'
-import { parseWithSchema } from './utils/validation.js'
-export { parseJsonValue, parseSetExpression, setAtPath } from './utils/settings.js'
-export { GAME_OVERRIDE_FILE, parseGameOverrides } from './utils/configOverrides.js'
+} from '../schemas/index.js'
+import { GAME_OVERRIDE_FILE, overrideLaunchBooleanKeys, parseGameOverrides } from '../utils/configOverrides.js'
+import { readValidatedJson } from '../utils/json.js'
+import { onlyKeys } from '../utils/objects.js'
+import { parseWithSchema } from '../utils/validation.js'
+export { parseJsonValue, parseSetExpression, setAtPath } from '../utils/settings.js'
+export { GAME_OVERRIDE_FILE, parseGameOverrides } from '../utils/configOverrides.js'
 import type {
   AppConfig,
   ComponentSelection,
@@ -25,7 +25,7 @@ import type {
   DefaultsFile,
   Paths,
   RuntimeSource
-} from './types/index.js'
+} from '../types/index.js'
 
 const validSources = new Set<RuntimeSource>([
   'ge-proton',

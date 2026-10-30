@@ -5,9 +5,9 @@ import { isRuntimeSource } from './config.js'
 import { downloadFile, extractArchive, fetchJson, verifySha512 } from './network.js'
 import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
 import { assetMatchesArchitecture, isArchiveAsset, runtimeSources, sourcesForPlatform } from './sources.js'
-import { installedRuntimeSchema, runtimeReleaseSchema } from './schemas/index.js'
-import { parseWithSchema } from './utils/validation.js'
-import type { InstallOptions, InstalledRuntime, Paths, RuntimeRelease, RuntimeSource } from './types/index.js'
+import { installedRuntimeSchema, runtimeReleaseSchema } from '../schemas/index.js'
+import type { InstallOptions, InstalledRuntime, Paths, RuntimeRelease, RuntimeSource } from '../types/index.js'
+import { parseWithSchema } from '../utils/validation.js'
 
 interface GithubAsset {
   name: string

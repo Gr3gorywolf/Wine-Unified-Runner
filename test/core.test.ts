@@ -18,14 +18,14 @@ import {
   parseSetExpression,
   saveContainer,
   setAtPath
-} from '../src/config.js'
-import { removeComponent } from '../src/components.js'
-import { buildContainer, createContainer, removeContainer } from '../src/containers.js'
-import { buildLaunchEnvironment, runRuntime } from '../src/launch.js'
-import { isExecutableFallback } from '../src/invocation.js'
-import { getPaths, readJson, writeJson } from '../src/paths.js'
-import { ensureSharedUserProfile } from '../src/profile.js'
-import { findRuntimeBinary, removeRuntime, runtimeId } from '../src/runtime.js'
+} from '../src/services/config.js'
+import { removeComponent } from '../src/services/components.js'
+import { buildContainer, createContainer, removeContainer } from '../src/services/containers.js'
+import { buildLaunchEnvironment, runRuntime } from '../src/services/launch.js'
+import { isExecutableFallback } from '../src/services/invocation.js'
+import { getPaths, readJson, writeJson } from '../src/services/paths.js'
+import { ensureSharedUserProfile } from '../src/services/profile.js'
+import { findRuntimeBinary, removeRuntime, runtimeId } from '../src/services/runtime.js'
 import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from '../src/types/index.js'
 
 const execFileAsync = promisify(execFile)

@@ -4,9 +4,9 @@ import { join } from 'node:path'
 import { downloadFile, extractArchive, fetchJson } from './network.js'
 import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
 import { compatibleComponentRecommendations, componentNames, isArchiveAsset } from './sources.js'
-import { componentReleaseSchema, installedComponentSchema } from './schemas/index.js'
-import { parseWithSchema } from './utils/validation.js'
-import type { ComponentName, ComponentRelease, InstallOptions, InstalledComponent, Paths } from './types/index.js'
+import { componentReleaseSchema, installedComponentSchema } from '../schemas/index.js'
+import type { ComponentName, ComponentRelease, InstallOptions, InstalledComponent, Paths } from '../types/index.js'
+import { parseWithSchema } from '../utils/validation.js'
 
 interface GithubAsset {
   name: string

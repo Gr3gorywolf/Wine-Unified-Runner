@@ -1,5 +1,5 @@
-import { findInstalledComponent } from '../components.js'
-import { getPaths } from '../paths.js'
+import { findInstalledComponent } from '../services/components.js'
+import { getPaths } from '../services/paths.js'
 import type { ContainerConfig } from '../types/index.js'
 
 export async function componentRuntimeEnvironment(container: ContainerConfig): Promise<NodeJS.ProcessEnv> {
