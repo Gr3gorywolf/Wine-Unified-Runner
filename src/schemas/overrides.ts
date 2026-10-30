@@ -13,7 +13,7 @@ const iniNumberSchema = z.preprocess((value) => {
   if (typeof value === 'string' && value.trim() !== '') return Number(value)
   return value
 }, z.number().finite())
-const iniNullableNumberSchema = z.preprocess((value) => value === 'null' ? null : value, iniNumberSchema.nullable())
+const iniNullableNumberSchema = z.preprocess((value) => (value === 'null' ? null : value), iniNumberSchema.nullable())
 const environmentNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u)
 
 const optionalBoolean = iniBooleanSchema.optional().catch(undefined)
@@ -35,63 +35,86 @@ const environmentOverridesSchema = z.record(z.string(), z.unknown()).transform((
   return environment
 })
 
-const runtimeOverridesSchema = z.object({
-  source: runtimeSourceSchema.optional().catch(undefined),
-  version: optionalString
-}).strip().transform(withoutUndefined)
+const runtimeOverridesSchema = z
+  .object({
+    source: runtimeSourceSchema.optional().catch(undefined),
+    version: optionalString
+  })
+  .strip()
+  .transform(withoutUndefined)
 
-const componentOverridesSchema = z.object({
-  'dxvk.enabled': optionalBoolean,
-  'dxvk.version': optionalString,
-  'dxvkNvapi.enabled': optionalBoolean,
-  'dxvkNvapi.version': optionalString,
-  'vkd3d.enabled': optionalBoolean,
-  'vkd3d.version': optionalString,
-  'eacRuntime.enabled': optionalBoolean,
-  'eacRuntime.version': optionalString,
-  'battleyeRuntime.enabled': optionalBoolean,
-  'battleyeRuntime.version': optionalString
-}).strip().transform((values) => withoutUndefined({
-  dxvk: withoutUndefined({ enabled: values['dxvk.enabled'], version: values['dxvk.version'] }),
-  dxvkNvapi: withoutUndefined({ enabled: values['dxvkNvapi.enabled'], version: values['dxvkNvapi.version'] }),
-  vkd3d: withoutUndefined({ enabled: values['vkd3d.enabled'], version: values['vkd3d.version'] }),
-  eacRuntime: withoutUndefined({ enabled: values['eacRuntime.enabled'], version: values['eacRuntime.version'] }),
-  battleyeRuntime: withoutUndefined({ enabled: values['battleyeRuntime.enabled'], version: values['battleyeRuntime.version'] })
-}))
+const componentOverridesSchema = z
+  .object({
+    'dxvk.enabled': optionalBoolean,
+    'dxvk.version': optionalString,
+    'dxvkNvapi.enabled': optionalBoolean,
+    'dxvkNvapi.version': optionalString,
+    'vkd3d.enabled': optionalBoolean,
+    'vkd3d.version': optionalString,
+    'eacRuntime.enabled': optionalBoolean,
+    'eacRuntime.version': optionalString,
+    'battleyeRuntime.enabled': optionalBoolean,
+    'battleyeRuntime.version': optionalString
+  })
+  .strip()
+  .transform((values) =>
+    withoutUndefined({
+      dxvk: withoutUndefined({ enabled: values['dxvk.enabled'], version: values['dxvk.version'] }),
+      dxvkNvapi: withoutUndefined({ enabled: values['dxvkNvapi.enabled'], version: values['dxvkNvapi.version'] }),
+      vkd3d: withoutUndefined({ enabled: values['vkd3d.enabled'], version: values['vkd3d.version'] }),
+      eacRuntime: withoutUndefined({ enabled: values['eacRuntime.enabled'], version: values['eacRuntime.version'] }),
+      battleyeRuntime: withoutUndefined({
+        enabled: values['battleyeRuntime.enabled'],
+        version: values['battleyeRuntime.version']
+      })
+    })
+  )
 
-const launchOverridesSchema = z.object({
-  enableEsync: optionalBoolean,
-  enableFsync: optionalBoolean,
-  enableMsync: optionalBoolean,
-  enableWayland: optionalBoolean,
-  enableHdr: optionalBoolean,
-  enableWow64: optionalBoolean,
-  showFps: optionalBoolean,
-  dxvkFrameRate: optionalNullableNumber,
-  fsr: optionalBoolean,
-  fsrSharpness: optionalNumber,
-  verboseLogs: optionalBoolean
-}).strip()
+const launchOverridesSchema = z
+  .object({
+    enableEsync: optionalBoolean,
+    enableFsync: optionalBoolean,
+    enableMsync: optionalBoolean,
+    enableWayland: optionalBoolean,
+    enableHdr: optionalBoolean,
+    enableWow64: optionalBoolean,
+    showFps: optionalBoolean,
+    dxvkFrameRate: optionalNullableNumber,
+    fsr: optionalBoolean,
+    fsrSharpness: optionalNumber,
+    verboseLogs: optionalBoolean
+  })
+  .strip()
 
 /**
  * Tolerant schema for wur-overrides.ini. Unknown names and invalid values are
  * stripped, leaving only safe per-game settings to apply at launch time.
  */
-export const gameOverrideIniSchema = z.object({
-  container: z.object({ name: containerNameSchema.optional().catch(undefined) }).strip().optional().catch(undefined),
-  runtime: runtimeOverridesSchema.optional().catch(undefined),
-  components: componentOverridesSchema.optional().catch(undefined),
-  launch: launchOverridesSchema.optional().catch(undefined),
-  environment: environmentOverridesSchema.optional().catch(undefined)
-}).strip().transform((input): GameOverrides => {
-  const launch = withoutUndefined({
-    ...input.launch,
-    environment: input.environment && Object.keys(input.environment).length ? input.environment : undefined
+export const gameOverrideIniSchema = z
+  .object({
+    container: z
+      .object({ name: containerNameSchema.optional().catch(undefined) })
+      .strip()
+      .optional()
+      .catch(undefined),
+    runtime: runtimeOverridesSchema.optional().catch(undefined),
+    components: componentOverridesSchema.optional().catch(undefined),
+    launch: launchOverridesSchema.optional().catch(undefined),
+    environment: environmentOverridesSchema.optional().catch(undefined)
   })
-  return withoutUndefined({
-    containerName: input.container?.name,
-    runtime: input.runtime,
-    components: input.components,
-    launch
-  }) || {}
-}).catch({})
+  .strip()
+  .transform((input): GameOverrides => {
+    const launch = withoutUndefined({
+      ...input.launch,
+      environment: input.environment && Object.keys(input.environment).length ? input.environment : undefined
+    })
+    return (
+      withoutUndefined({
+        containerName: input.container?.name,
+        runtime: input.runtime,
+        components: input.components,
+        launch
+      }) || {}
+    )
+  })
+  .catch({})

@@ -27,7 +27,9 @@ interface LutrisRuntime {
   created_at?: string
 }
 
-const githubComponents: Partial<Record<ComponentName, { apiUrl: string; asset: (asset: GithubAsset) => boolean; strip: number }>> = {
+const githubComponents: Partial<
+  Record<ComponentName, { apiUrl: string; asset: (asset: GithubAsset) => boolean; strip: number }>
+> = {
   dxvk: {
     apiUrl: 'https://api.github.com/repos/doitsujin/dxvk/releases',
     asset: (asset) => /^dxvk-.*\.tar\.(gz|xz|zst)$/i.test(asset.name),
@@ -71,7 +73,11 @@ function metadataFile(path: string): string {
   return join(path, 'component.json')
 }
 
-export async function listComponentReleases(name?: ComponentName, limit = 30, includeAll = false): Promise<ComponentRelease[]> {
+export async function listComponentReleases(
+  name?: ComponentName,
+  limit = 30,
+  includeAll = false
+): Promise<ComponentRelease[]> {
   const requested = name ? [name] : compatibleComponentRecommendations(includeAll).map((component) => component.name)
   const releases: ComponentRelease[] = []
   for (const component of requested) {
@@ -108,7 +114,9 @@ export async function listComponentReleases(name?: ComponentName, limit = 30, in
       stripComponents: 1
     })
   }
-  return releases.map((release) => parseWithSchema(componentReleaseSchema, release, `component ${release.name}/${release.version}`))
+  return releases.map((release) =>
+    parseWithSchema(componentReleaseSchema, release, `component ${release.name}/${release.version}`)
+  )
 }
 
 export async function listInstalledComponents(paths = getPaths()): Promise<InstalledComponent[]> {
@@ -121,13 +129,21 @@ export async function listInstalledComponents(paths = getPaths()): Promise<Insta
       if (!entry.isDirectory()) continue
       const file = metadataFile(join(parent, entry.name))
       if (!existsSync(file)) continue
-      try { listed.push(parseWithSchema(installedComponentSchema, await readJson<unknown>(file), file)) } catch { /* omit incomplete install */ }
+      try {
+        listed.push(parseWithSchema(installedComponentSchema, await readJson<unknown>(file), file))
+      } catch {
+        /* omit incomplete install */
+      }
     }
   }
   return listed.sort((a, b) => b.installedAt.localeCompare(a.installedAt))
 }
 
-export async function findInstalledComponent(name: ComponentName, version: string, paths = getPaths()): Promise<InstalledComponent | undefined> {
+export async function findInstalledComponent(
+  name: ComponentName,
+  version: string,
+  paths = getPaths()
+): Promise<InstalledComponent | undefined> {
   const installed = await listInstalledComponents(paths)
   return version === 'latest'
     ? installed.find((component) => component.name === name)
@@ -149,7 +165,9 @@ export async function installComponent(
     options.onProgress?.(100)
     return existing
   }
-  const release = (await listComponentReleases(name, 100)).find((candidate) => requestedVersion === 'latest' || candidate.version === requestedVersion)
+  const release = (await listComponentReleases(name, 100)).find(
+    (candidate) => requestedVersion === 'latest' || candidate.version === requestedVersion
+  )
   if (!release) throw new Error(`Version "${requestedVersion}" was not found for component ${name}.`)
   const exact = await findInstalledComponent(name, release.version, paths)
   if (exact && !force) {
@@ -158,7 +176,10 @@ export async function installComponent(
   }
 
   const destination = componentPath(paths, name, release.version)
-  const archive = join(paths.downloads, `${name}-${release.version.replace(/[^A-Za-z0-9._-]+/g, '_')}-${release.download.split('/').at(-1)}`)
+  const archive = join(
+    paths.downloads,
+    `${name}-${release.version.replace(/[^A-Za-z0-9._-]+/g, '_')}-${release.download.split('/').at(-1)}`
+  )
   const staging = `${destination}.extracting-${process.pid}-${Date.now()}`
   if (!options.quiet) console.error(`Installing ${name} ${release.version}…`)
   await downloadFile(release.download, archive, `${name} ${release.version}`, {
@@ -181,7 +202,11 @@ export async function installComponent(
     if (existsSync(destination)) {
       if (!force) {
         options.onProgress?.(100)
-        return parseWithSchema(installedComponentSchema, await readJson<unknown>(metadataFile(destination)), metadataFile(destination))
+        return parseWithSchema(
+          installedComponentSchema,
+          await readJson<unknown>(metadataFile(destination)),
+          metadataFile(destination)
+        )
       }
       await rm(destination, { recursive: true, force: true })
     }
@@ -198,7 +223,11 @@ export async function installComponent(
 }
 
 /** Permanently removes one component managed by this portable CLI installation. */
-export async function removeComponent(name: ComponentName, version = 'latest', paths = getPaths()): Promise<Pick<InstalledComponent, 'name' | 'version' | 'path'>> {
+export async function removeComponent(
+  name: ComponentName,
+  version = 'latest',
+  paths = getPaths()
+): Promise<Pick<InstalledComponent, 'name' | 'version' | 'path'>> {
   if (!componentNames.includes(name)) throw new Error(`Unknown component "${name}".`)
   const installed = await findInstalledComponent(name, version, paths)
   if (!installed) throw new Error(`Component ${name}/${version} is not installed.`)
@@ -216,7 +245,11 @@ async function findDirectory(root: string, names: string[]): Promise<string | un
     const current = queue.shift()!
     if (current.depth > 4) continue
     let entries
-    try { entries = await readdir(current.path, { withFileTypes: true }) } catch { continue }
+    try {
+      entries = await readdir(current.path, { withFileTypes: true })
+    } catch {
+      continue
+    }
     for (const entry of entries) {
       const child = join(current.path, entry.name)
       if (entry.isDirectory() && names.includes(entry.name)) return child
@@ -242,7 +275,8 @@ async function copyDllDirectory(source: string | undefined, destination: string)
 export async function applyDllComponent(component: InstalledComponent, prefix: string): Promise<string[]> {
   const x64 = await findDirectory(component.path, ['x64'])
   const x32 = await findDirectory(component.path, component.name === 'vkd3d' ? ['x86', 'x32'] : ['x32', 'x86'])
-  if (!x64 && !x32) throw new Error(`${component.name} ${component.version} does not contain x64, x32, or x86 DLL directories.`)
+  if (!x64 && !x32)
+    throw new Error(`${component.name} ${component.version} does not contain x64, x32, or x86 DLL directories.`)
   const windows = join(prefix, 'drive_c', 'windows')
   const copied = await Promise.all([
     copyDllDirectory(x64, join(windows, 'system32')),

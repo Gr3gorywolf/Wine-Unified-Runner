@@ -95,14 +95,16 @@ function waitForProcessExit(child: ChildProcess, errorPrefix: string, closePipes
 function steamClientPath(): string {
   const configured = process.env.WUR_STEAM_ROOT || process.env.PROTON_CLI_STEAM_ROOT
   if (configured) return configured
-  const choices = [
-    join(homedir(), '.steam', 'steam'),
-    join(homedir(), '.local', 'share', 'Steam')
-  ]
+  const choices = [join(homedir(), '.steam', 'steam'), join(homedir(), '.local', 'share', 'Steam')]
   return choices.find(existsSync) || choices[0]
 }
 
-export function buildLaunchEnvironment(container: ContainerConfig, runtime: InstalledRuntime, gameId = container.name, installPath?: string): NodeJS.ProcessEnv {
+export function buildLaunchEnvironment(
+  container: ContainerConfig,
+  runtime: InstalledRuntime,
+  gameId = container.name,
+  installPath?: string
+): NodeJS.ProcessEnv {
   const launch = container.launch
   const customEnvironment = Object.fromEntries(
     Object.entries(launch.environment).map(([key, value]) => [key, String(value)])
@@ -175,12 +177,21 @@ export async function runRuntime(
   container: ContainerConfig,
   runtime: InstalledRuntime,
   command: string[],
-  options: { protonVerb?: 'run' | 'waitforexitandrun' | 'runinprefix'; cwd?: string; inheritStdio?: boolean; installPath?: string; extraEnv?: NodeJS.ProcessEnv } = {}
+  options: {
+    protonVerb?: 'run' | 'waitforexitandrun' | 'runinprefix'
+    cwd?: string
+    inheritStdio?: boolean
+    installPath?: string
+    extraEnv?: NodeJS.ProcessEnv
+  } = {}
 ): Promise<SpawnResult> {
   if (!existsSync(runtime.bin)) throw new Error(`Runtime executable is missing: ${runtime.bin}`)
   const protonVerb = options.protonVerb || 'run'
   const args = runtime.kind === 'proton' ? [protonVerb, ...command] : command
-  const env = { ...buildLaunchEnvironment(container, runtime, container.name, options.installPath), ...options.extraEnv }
+  const env = {
+    ...buildLaunchEnvironment(container, runtime, container.name, options.installPath),
+    ...options.extraEnv
+  }
   env.PROTON_VERB = protonVerb
   const inheritsStdio = options.inheritStdio !== false
   const child = spawn(runtime.bin, args, {
@@ -215,18 +226,15 @@ export async function stopWineServer(container: ContainerConfig, runtime: Instal
 }
 
 export async function initializePrefix(container: ContainerConfig, runtime: InstalledRuntime): Promise<void> {
-  const marker = runtime.kind === 'proton'
-    ? join(container.prefix, 'pfx', 'system.reg')
-    : join(container.prefix, 'system.reg')
+  const marker =
+    runtime.kind === 'proton' ? join(container.prefix, 'pfx', 'system.reg') : join(container.prefix, 'system.reg')
   if (existsSync(marker)) return
   await mkdir(container.prefix, { recursive: true })
   const env = buildLaunchEnvironment(container, runtime)
   if (container.architecture === 'win32') env.WINEARCH = 'win32'
   if (container.architecture === 'wow64' && runtime.kind !== 'proton') env.WINEARCH = 'wow64'
 
-  const args = runtime.kind === 'proton'
-    ? ['run', 'wineboot', '--init']
-    : ['wineboot', '--init']
+  const args = runtime.kind === 'proton' ? ['run', 'wineboot', '--init'] : ['wineboot', '--init']
   console.error(`Creating ${container.architecture} prefix for container ${container.name}…`)
   const child = spawn(runtime.bin, args, { env, stdio: 'inherit' })
   const result = await waitForProcessExit(child, 'Could not initialize prefix', false)

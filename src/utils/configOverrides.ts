@@ -4,8 +4,15 @@ import type { GameOverrides } from '../types/index.js'
 
 export const GAME_OVERRIDE_FILE = 'wur-overrides.ini'
 export const overrideLaunchBooleanKeys = [
-  'enableEsync', 'enableFsync', 'enableMsync', 'enableWayland', 'enableHdr',
-  'enableWow64', 'showFps', 'fsr', 'verboseLogs'
+  'enableEsync',
+  'enableFsync',
+  'enableMsync',
+  'enableWayland',
+  'enableHdr',
+  'enableWow64',
+  'showFps',
+  'fsr',
+  'verboseLogs'
 ] as const
 
 /**

@@ -27,7 +27,11 @@ export async function listContainers(paths = getPaths()): Promise<ContainerConfi
   const containers: ContainerConfig[] = []
   for (const entry of await readdir(paths.containers, { withFileTypes: true })) {
     if (!entry.isDirectory() || !existsSync(containerFile(paths, entry.name))) continue
-    try { containers.push(await loadContainer(entry.name, paths)) } catch { /* omit malformed external folders */ }
+    try {
+      containers.push(await loadContainer(entry.name, paths))
+    } catch {
+      /* omit malformed external folders */
+    }
   }
   return containers.sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -44,17 +48,36 @@ async function resolvedRuntime(container: ContainerConfig, paths: Paths): Promis
   }
 }
 
-async function registerNativeDlls(container: ContainerConfig, runtime: InstalledRuntime, dlls: string[]): Promise<void> {
+async function registerNativeDlls(
+  container: ContainerConfig,
+  runtime: InstalledRuntime,
+  dlls: string[]
+): Promise<void> {
   for (const dll of dlls) {
-    const result = await runRuntime(container, runtime, [
-      'reg', 'add', 'HKEY_CURRENT_USER\\Software\\Wine\\DllOverrides',
-      '/v', dll.replace(/\.dll$/i, ''), '/d', 'native,builtin', '/f'
-    ], { protonVerb: 'run' })
+    const result = await runRuntime(
+      container,
+      runtime,
+      [
+        'reg',
+        'add',
+        'HKEY_CURRENT_USER\\Software\\Wine\\DllOverrides',
+        '/v',
+        dll.replace(/\.dll$/i, ''),
+        '/d',
+        'native,builtin',
+        '/f'
+      ],
+      { protonVerb: 'run' }
+    )
     if (result.code !== 0) throw new Error(`Could not register ${dll} in ${container.name} (status ${result.code})`)
   }
 }
 
-async function prepareWineComponents(container: ContainerConfig, runtime: InstalledRuntime, paths: Paths): Promise<void> {
+async function prepareWineComponents(
+  container: ContainerConfig,
+  runtime: InstalledRuntime,
+  paths: Paths
+): Promise<void> {
   if (runtime.kind === 'proton') {
     // Proton brings its own DXVK and VKD3D. Copying another version over it is unsafe.
     return
@@ -63,7 +86,10 @@ async function prepareWineComponents(container: ContainerConfig, runtime: Instal
     // Heroic avoids changing GPTK's D3DMetal setup for the same reason.
     return
   }
-  const requested: Array<{ selection: keyof ContainerConfig['components']; name: 'dxvk' | 'dxvk-nvapi' | 'vkd3d' | 'dxvk-macos' }> = [
+  const requested: Array<{
+    selection: keyof ContainerConfig['components']
+    name: 'dxvk' | 'dxvk-nvapi' | 'vkd3d' | 'dxvk-macos'
+  }> = [
     { selection: 'dxvk', name: process.platform === 'darwin' ? 'dxvk-macos' : 'dxvk' },
     { selection: 'dxvkNvapi', name: 'dxvk-nvapi' },
     { selection: 'vkd3d', name: 'vkd3d' }
@@ -73,7 +99,7 @@ async function prepareWineComponents(container: ContainerConfig, runtime: Instal
     if (!selected.enabled) continue
     if (process.platform === 'darwin' && item.name !== 'dxvk-macos') continue
     const installed = await findInstalledComponent(item.name, selected.version, paths)
-    const component = installed || await installComponent(item.name, selected.version, false, paths)
+    const component = installed || (await installComponent(item.name, selected.version, false, paths))
     const marker = join(container.prefix, `current_${item.name}`)
     if (existsSync(marker) && (await readFile(marker, 'utf8')).trim() === component.version) continue
     const dlls = await applyDllComponent(component, container.prefix)
@@ -102,8 +128,13 @@ export async function prepareContainer(
   options: { persist?: boolean } = {}
 ): Promise<{ container: ContainerConfig; runtime: InstalledRuntime }> {
   if (!canRunRuntimeOnThisSystem(container.runtime.source)) {
-    const alternatives = sourcesForPlatform().filter((source) => canRunRuntimeOnThisSystem(source.id)).map((source) => source.id).join(', ')
-    throw new Error(`${runtimeSources[container.runtime.source].label} cannot run on ${process.platform}/${process.arch}. Use one of: ${alternatives || 'no supported runtime detected'}. Run "wur suggest" for guidance.`)
+    const alternatives = sourcesForPlatform()
+      .filter((source) => canRunRuntimeOnThisSystem(source.id))
+      .map((source) => source.id)
+      .join(', ')
+    throw new Error(
+      `${runtimeSources[container.runtime.source].label} cannot run on ${process.platform}/${process.arch}. Use one of: ${alternatives || 'no supported runtime detected'}. Run "wur suggest" for guidance.`
+    )
   }
   const runtime = await resolvedRuntime(container, paths)
   if (options.persist !== false) await saveContainer(container, paths)
@@ -122,7 +153,7 @@ export async function createContainer(
 ): Promise<ContainerConfig> {
   await ensurePaths(paths)
   if (existsSync(containerFile(paths, name))) throw new Error(`Container "${name}" already exists.`)
-  const defaults = options.defaults || await loadDefaults(paths)
+  const defaults = options.defaults || (await loadDefaults(paths))
   const container = newContainer(name, defaults, paths)
   options.mutate?.(container)
   await mkdir(dirname(containerFile(paths, name)), { recursive: true })
@@ -148,7 +179,10 @@ export async function setDefaultContainer(name: string, paths = getPaths()): Pro
 }
 
 /** Permanently removes a container and its self-contained Wine prefix. */
-export async function removeContainer(name: string, paths = getPaths()): Promise<{ name: string; path: string; clearedDefault: boolean }> {
+export async function removeContainer(
+  name: string,
+  paths = getPaths()
+): Promise<{ name: string; path: string; clearedDefault: boolean }> {
   // Loading first validates the name and ensures we only remove a managed
   // container that actually exists.
   await loadContainer(name, paths)
@@ -183,7 +217,11 @@ export async function listBuildableContainers(paths = getPaths()): Promise<strin
  * Builds a full container.json from containers/<name>/config.json and, by
  * default, initializes the Wine prefix and its selected components.
  */
-export async function buildContainer(name: string, options: { initialize?: boolean } = {}, paths = getPaths()): Promise<ContainerConfig> {
+export async function buildContainer(
+  name: string,
+  options: { initialize?: boolean } = {},
+  paths = getPaths()
+): Promise<ContainerConfig> {
   assertContainerName(name)
   await ensurePaths(paths)
   const defaults = await loadDefaults(paths)
@@ -200,9 +238,7 @@ export async function buildContainer(name: string, options: { initialize?: boole
   }
   await mkdir(containerDirectory(paths, name), { recursive: true })
   await saveContainer(container, paths)
-  const built = options.initialize === false
-    ? container
-    : (await prepareContainer(container, paths)).container
+  const built = options.initialize === false ? container : (await prepareContainer(container, paths)).container
   const appConfig = await loadAppConfig(paths)
   if (!appConfig.defaultContainer) {
     appConfig.defaultContainer = name

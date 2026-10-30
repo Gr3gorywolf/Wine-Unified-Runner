@@ -1,7 +1,11 @@
 import type { ContainerConfig } from '../types/index.js'
 
 export function parseJsonValue(value: string): unknown {
-  try { return JSON.parse(value) } catch { return value }
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
 }
 
 export function setAtPath(target: Record<string, unknown>, path: string, value: unknown): void {

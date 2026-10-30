@@ -2,7 +2,13 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { ensurePaths, getPaths, readJson, writeJson } from './paths.js'
-import { appConfigSchema, containerConfigSchema, containerManifestSchema, containerRuntimeRefSchema, defaultsFileSchema } from './schemas/index.js'
+import {
+  appConfigSchema,
+  containerConfigSchema,
+  containerManifestSchema,
+  containerRuntimeRefSchema,
+  defaultsFileSchema
+} from './schemas/index.js'
 import { GAME_OVERRIDE_FILE, overrideLaunchBooleanKeys, parseGameOverrides } from './utils/configOverrides.js'
 import { readValidatedJson } from './utils/json.js'
 import { onlyKeys } from './utils/objects.js'
@@ -143,7 +149,10 @@ export function gameOverrideFile(executable: string): string {
 }
 
 /** Creates the editable sidecar when absent, then parses the game's settings. */
-export async function loadGameOverrides(executable: string, paths = getPaths()): Promise<{ file: string; overrides: GameOverrides }> {
+export async function loadGameOverrides(
+  executable: string,
+  paths = getPaths()
+): Promise<{ file: string; overrides: GameOverrides }> {
   const file = gameOverrideFile(executable)
   if (!existsSync(file)) {
     if (!existsSync(paths.overrideTemplate)) {
@@ -160,7 +169,9 @@ export function applyGameOverrides(container: ContainerConfig, overrides: GameOv
   const result = structuredClone(container)
   if (overrides.runtime?.source !== undefined) result.runtime.source = overrides.runtime.source
   if (overrides.runtime?.version !== undefined) result.runtime.version = overrides.runtime.version
-  for (const [key, selection] of Object.entries(overrides.components || {}) as Array<[keyof ContainerComponents, Partial<ComponentSelection>]>) {
+  for (const [key, selection] of Object.entries(overrides.components || {}) as Array<
+    [keyof ContainerComponents, Partial<ComponentSelection>]
+  >) {
     if (selection.enabled !== undefined) result.components[key].enabled = selection.enabled
     if (selection.version !== undefined) result.components[key].version = selection.version
   }
@@ -171,7 +182,8 @@ export function applyGameOverrides(container: ContainerConfig, overrides: GameOv
     }
     if (overrides.launch.dxvkFrameRate !== undefined) result.launch.dxvkFrameRate = overrides.launch.dxvkFrameRate
     if (overrides.launch.fsrSharpness !== undefined) result.launch.fsrSharpness = overrides.launch.fsrSharpness
-    if (overrides.launch.environment) result.launch.environment = { ...result.launch.environment, ...overrides.launch.environment }
+    if (overrides.launch.environment)
+      result.launch.environment = { ...result.launch.environment, ...overrides.launch.environment }
   }
   validateContainer(result, GAME_OVERRIDE_FILE)
   return result
@@ -189,7 +201,8 @@ export function assertContainerName(name: string): void {
 
 export async function loadContainer(name: string, paths = getPaths()): Promise<ContainerConfig> {
   const file = containerFile(paths, name)
-  if (!existsSync(file)) throw new Error(`Container "${name}" does not exist. Create it with: wur container create --name ${name}`)
+  if (!existsSync(file))
+    throw new Error(`Container "${name}" does not exist. Create it with: wur container create --name ${name}`)
   const raw = await readJson<ContainerConfig>(file)
   // Older container files cached installed-runtime implementation details.
   // A container is declarative: only source/version belong in its JSON. Keep
@@ -219,7 +232,11 @@ function declaredRuntime(value: unknown, origin: string): ContainerRuntimeRef {
   const legacy = value as Record<string, unknown>
   // Runtime metadata (path, id, kind) from older container files is derived
   // locally and deliberately discarded from the declarative reference.
-  return parseWithSchema(containerRuntimeRefSchema, { source: legacy.source, version: legacy.version }, `Container runtime in ${origin}`)
+  return parseWithSchema(
+    containerRuntimeRefSchema,
+    { source: legacy.source, version: legacy.version },
+    `Container runtime in ${origin}`
+  )
 }
 
 /**
@@ -227,9 +244,13 @@ function declaredRuntime(value: unknown, origin: string): ContainerRuntimeRef {
  * fields (name, prefix and timestamps) intentionally come from the folder and
  * are never accepted from the manifest, keeping the installation portable.
  */
-export function resolveContainerManifest(raw: unknown, defaults: DefaultsFile): Omit<ContainerConfig, 'schemaVersion' | 'name' | 'createdAt' | 'updatedAt' | 'prefix'> {
+export function resolveContainerManifest(
+  raw: unknown,
+  defaults: DefaultsFile
+): Omit<ContainerConfig, 'schemaVersion' | 'name' | 'createdAt' | 'updatedAt' | 'prefix'> {
   const manifest = parseWithSchema(containerManifestSchema, raw, 'config.json')
-  if (manifest.schemaVersion !== undefined && manifest.schemaVersion !== 1) throw new Error('config.json schemaVersion must be 1.')
+  if (manifest.schemaVersion !== undefined && manifest.schemaVersion !== 1)
+    throw new Error('config.json schemaVersion must be 1.')
   const resolved = structuredClone(defaults.container)
 
   if (manifest.runtime !== undefined) {
@@ -267,7 +288,17 @@ export function resolveContainerManifest(raw: unknown, defaults: DefaultsFile): 
 
   if (manifest.launch !== undefined) {
     const launch = manifest.launch
-    const booleanKeys = ['enableEsync', 'enableFsync', 'enableMsync', 'enableWayland', 'enableHdr', 'enableWow64', 'showFps', 'fsr', 'verboseLogs'] as const
+    const booleanKeys = [
+      'enableEsync',
+      'enableFsync',
+      'enableMsync',
+      'enableWayland',
+      'enableHdr',
+      'enableWow64',
+      'showFps',
+      'fsr',
+      'verboseLogs'
+    ] as const
     onlyKeys(launch, [...booleanKeys, 'dxvkFrameRate', 'fsrSharpness', 'environment'], 'config.json.launch')
     for (const key of booleanKeys) {
       const value = launch[key]
@@ -286,7 +317,11 @@ export function resolveContainerManifest(raw: unknown, defaults: DefaultsFile): 
   return resolved
 }
 
-export async function loadContainerManifest(name: string, defaults: DefaultsFile, paths = getPaths()): Promise<Omit<ContainerConfig, 'schemaVersion' | 'name' | 'createdAt' | 'updatedAt' | 'prefix'>> {
+export async function loadContainerManifest(
+  name: string,
+  defaults: DefaultsFile,
+  paths = getPaths()
+): Promise<Omit<ContainerConfig, 'schemaVersion' | 'name' | 'createdAt' | 'updatedAt' | 'prefix'>> {
   const file = containerManifestFile(paths, name)
   if (!existsSync(file)) throw new Error(`Container "${name}" has no config.json. Expected: ${file}`)
   return resolveContainerManifest(await readJson<unknown>(file), defaults)

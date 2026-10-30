@@ -31,6 +31,9 @@ export function formatBytes(value: number): string {
   const units = ['B', 'KiB', 'MiB', 'GiB']
   let index = 0
   let amount = value
-  while (amount >= 1024 && index < units.length - 1) { amount /= 1024; index++ }
+  while (amount >= 1024 && index < units.length - 1) {
+    amount /= 1024
+    index++
+  }
   return `${amount.toFixed(index ? 1 : 0)} ${units[index]}`
 }

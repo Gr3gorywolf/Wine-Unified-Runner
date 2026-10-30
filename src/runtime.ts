@@ -36,28 +36,37 @@ function releaseName(source: RuntimeSource, tag: string): string {
 export async function listReleases(source?: RuntimeSource, limit = 30, includeAll = false): Promise<RuntimeRelease[]> {
   if (source && !runtimeSources[source]) throw new Error(`Unknown runtime source "${source}".`)
   const selected = source ? [runtimeSources[source]] : sourcesForPlatform(includeAll)
-  const releases = await Promise.all(selected.map(async (info) => {
-    const data = await fetchJson<GithubRelease[]>(`${info.apiUrl}?per_page=${Math.min(Math.max(limit, 1), 100)}`)
-    const entries = data.flatMap((item) => {
-      const asset = selectAsset(info.id, item)
-      if (!asset) return []
-      const checksum = info.id === 'ge-proton' || info.id === 'proton-cachyos'
-        ? item.assets.find((candidate) => candidate.name === asset.name.replace(/\.tar\.(gz|xz|zst)$/i, '.sha512sum'))?.browser_download_url
-        : item.assets.find((candidate) => /sha512sum$/i.test(candidate.name))?.browser_download_url
-      return [{
-        source: info.id,
-        version: releaseName(info.id, item.tag_name),
-        date: item.published_at.slice(0, 10),
-        download: asset.browser_download_url,
-        size: asset.size,
-        checksum,
-        notesUrl: item.html_url
-      } satisfies RuntimeRelease]
+  const releases = await Promise.all(
+    selected.map(async (info) => {
+      const data = await fetchJson<GithubRelease[]>(`${info.apiUrl}?per_page=${Math.min(Math.max(limit, 1), 100)}`)
+      const entries = data.flatMap((item) => {
+        const asset = selectAsset(info.id, item)
+        if (!asset) return []
+        const checksum =
+          info.id === 'ge-proton' || info.id === 'proton-cachyos'
+            ? item.assets.find(
+                (candidate) => candidate.name === asset.name.replace(/\.tar\.(gz|xz|zst)$/i, '.sha512sum')
+              )?.browser_download_url
+            : item.assets.find((candidate) => /sha512sum$/i.test(candidate.name))?.browser_download_url
+        return [
+          {
+            source: info.id,
+            version: releaseName(info.id, item.tag_name),
+            date: item.published_at.slice(0, 10),
+            download: asset.browser_download_url,
+            size: asset.size,
+            checksum,
+            notesUrl: item.html_url
+          } satisfies RuntimeRelease
+        ]
+      })
+      const latest = entries[0]
+      return latest ? [{ ...latest, version: 'latest', latest: true }, ...entries] : []
     })
-    const latest = entries[0]
-    return latest ? [{ ...latest, version: 'latest', latest: true }, ...entries] : []
-  }))
-  return releases.flat().map((release) => parseWithSchema(runtimeReleaseSchema, release, `runtime ${release.source}/${release.version}`))
+  )
+  return releases
+    .flat()
+    .map((release) => parseWithSchema(runtimeReleaseSchema, release, `runtime ${release.source}/${release.version}`))
 }
 
 export function runtimeId(source: RuntimeSource, version: string): string {
@@ -99,7 +108,11 @@ export async function listInstalledRuntimes(paths = getPaths()): Promise<Install
   return installed.sort((a, b) => b.installedAt.localeCompare(a.installedAt))
 }
 
-export async function findInstalledRuntime(source: RuntimeSource, version: string, paths = getPaths()): Promise<InstalledRuntime | undefined> {
+export async function findInstalledRuntime(
+  source: RuntimeSource,
+  version: string,
+  paths = getPaths()
+): Promise<InstalledRuntime | undefined> {
   const installed = await listInstalledRuntimes(paths)
   return version === 'latest'
     ? installed.find((runtime) => runtime.source === source)
@@ -109,7 +122,10 @@ export async function findInstalledRuntime(source: RuntimeSource, version: strin
 async function resolveRelease(source: RuntimeSource, version: string): Promise<RuntimeRelease> {
   const releases = await listReleases(source, 100, true)
   const release = releases.find((candidate) => candidate.version === version)
-  if (!release) throw new Error(`Version "${version}" was not found for ${source}. Run "wur runtime list --remote --source ${source}".`)
+  if (!release)
+    throw new Error(
+      `Version "${version}" was not found for ${source}. Run "wur runtime list --remote --source ${source}".`
+    )
   return release
 }
 
@@ -135,7 +151,9 @@ function isFinderBundleLauncher(root: string, candidate: string): boolean {
 }
 
 export async function findRuntimeBinary(root: string, kind: InstalledRuntime['kind']): Promise<string> {
-  const found = possibleBinaries(kind).map((candidate) => join(root, candidate)).find(existsSync)
+  const found = possibleBinaries(kind)
+    .map((candidate) => join(root, candidate))
+    .find(existsSync)
   if (found) return found
   if (kind !== 'proton') {
     // Retain a fallback for unusual archive layouts, but do not accidentally
@@ -145,19 +163,26 @@ export async function findRuntimeBinary(root: string, kind: InstalledRuntime['ki
       const current = queue.shift()!
       if (current.depth > 8) continue
       let entries
-      try { entries = await readdir(current.path, { withFileTypes: true }) } catch { continue }
+      try {
+        entries = await readdir(current.path, { withFileTypes: true })
+      } catch {
+        continue
+      }
       for (const entry of entries) {
         const child = join(current.path, entry.name)
         if (
           (entry.isFile() || entry.isSymbolicLink()) &&
           ['wine', 'wine64'].includes(entry.name) &&
           !isFinderBundleLauncher(root, child)
-        ) return child
+        )
+          return child
         if (entry.isDirectory()) queue.push({ path: child, depth: current.depth + 1 })
       }
     }
   }
-  throw new Error(`Runtime was extracted, but no executable was found in ${root}. Expected one of: ${possibleBinaries(kind).join(', ')}`)
+  throw new Error(
+    `Runtime was extracted, but no executable was found in ${root}. Expected one of: ${possibleBinaries(kind).join(', ')}`
+  )
 }
 
 export async function installRuntime(
@@ -202,7 +227,11 @@ export async function installRuntime(
     options.onProgress?.(97)
     const kind = runtimeSources[source].kind
     const bin = await findRuntimeBinary(staging, kind)
-    try { await chmod(bin, 0o755) } catch { /* archive permissions are normally sufficient */ }
+    try {
+      await chmod(bin, 0o755)
+    } catch {
+      /* archive permissions are normally sufficient */
+    }
     const relativeBin = bin.slice(staging.length + 1)
     const wineserverCandidate = join(join(bin, '..'), 'wineserver')
     const installed: InstalledRuntime = {
@@ -222,7 +251,11 @@ export async function installRuntime(
     if (existsSync(destination)) {
       if (!force) {
         options.onProgress?.(100)
-        return parseWithSchema(installedRuntimeSchema, await readJson<unknown>(metadataFile(destination)), metadataFile(destination))
+        return parseWithSchema(
+          installedRuntimeSchema,
+          await readJson<unknown>(metadataFile(destination)),
+          metadataFile(destination)
+        )
       }
       await rm(destination, { recursive: true, force: true })
     }
@@ -239,7 +272,11 @@ export async function installRuntime(
 }
 
 /** Permanently removes one runtime managed by this portable CLI installation. */
-export async function removeRuntime(source: RuntimeSource, version = 'latest', paths = getPaths()): Promise<Pick<InstalledRuntime, 'id' | 'source' | 'version' | 'path'>> {
+export async function removeRuntime(
+  source: RuntimeSource,
+  version = 'latest',
+  paths = getPaths()
+): Promise<Pick<InstalledRuntime, 'id' | 'source' | 'version' | 'path'>> {
   if (!isRuntimeSource(source)) throw new Error(`Unknown runtime source "${source}".`)
   const installed = await findInstalledRuntime(source, version, paths)
   if (!installed) throw new Error(`Runtime ${source}/${version} is not installed.`)
@@ -251,7 +288,11 @@ export async function removeRuntime(source: RuntimeSource, version = 'latest', p
   return { id: installed.id, source: installed.source, version: installed.version, path: target }
 }
 
-export async function getRuntime(source: RuntimeSource, version: string, paths = getPaths()): Promise<InstalledRuntime> {
+export async function getRuntime(
+  source: RuntimeSource,
+  version: string,
+  paths = getPaths()
+): Promise<InstalledRuntime> {
   const configured = await findInstalledRuntime(source, version, paths)
   return configured || installRuntime(source, version, false, paths)
 }

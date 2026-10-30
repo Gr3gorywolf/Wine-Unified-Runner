@@ -1,15 +1,7 @@
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
-import {
-  access,
-  chmod,
-  copyFile,
-  mkdir,
-  readFile,
-  rm,
-  writeFile
-} from 'node:fs/promises'
+import { access, chmod, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { arch, platform } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
@@ -57,7 +49,10 @@ function run(command, args, options = {}) {
     child.once('error', reject)
     child.once('exit', (code, signal) => {
       if (code === 0) resolvePromise()
-      else reject(new Error(`${basename(command)} failed${signal ? ` with signal ${signal}` : ` with exit code ${code}`}.`))
+      else
+        reject(
+          new Error(`${basename(command)} failed${signal ? ` with signal ${signal}` : ` with exit code ${code}`}.`)
+        )
     })
   })
 }
@@ -109,9 +104,7 @@ async function nodeArchive(targetPlatform, targetArch) {
   await ensureDownloaded(`${baseUrl}/${filename}`, archive)
   await ensureDownloaded(`${baseUrl}/SHASUMS256.txt`, sums)
 
-  const entry = (await readFile(sums, 'utf8'))
-    .split(/\r?\n/u)
-    .find((line) => line.trim().endsWith(`  ${filename}`))
+  const entry = (await readFile(sums, 'utf8')).split(/\r?\n/u).find((line) => line.trim().endsWith(`  ${filename}`))
   if (!entry) fail(`Node.js did not publish a checksum for ${filename}.`)
   const expected = entry.trim().split(/\s+/u)[0]
   const actual = await sha256(archive)
@@ -135,13 +128,7 @@ async function injectSea(sourceNode, destination, blob, targetPlatform) {
     await run('/usr/bin/codesign', ['--remove-signature', destination])
   }
   const postject = join(projectRoot, 'node_modules', '.bin', 'postject')
-  const args = [
-    destination,
-    'NODE_SEA_BLOB',
-    blob,
-    '--sentinel-fuse',
-    seaFuse
-  ]
+  const args = [destination, 'NODE_SEA_BLOB', blob, '--sentinel-fuse', seaFuse]
   if (targetPlatform === 'darwin') args.push('--macho-segment-name', 'NODE_SEA')
   await run(postject, args)
 }
@@ -197,14 +184,22 @@ async function main() {
   const generatorNode = await extractNode(platform(), targetArch)
   const blob = join(buildRoot, 'sea-prep.blob')
   const seaConfig = join(buildRoot, 'sea-config.json')
-  await writeFile(seaConfig, `${JSON.stringify({
-    main: bundle,
-    output: blob,
-    disableExperimentalSEAWarning: true,
-    useSnapshot: false,
-    useCodeCache: false,
-    execArgvExtension: 'none'
-  }, null, 2)}\n`, 'utf8')
+  await writeFile(
+    seaConfig,
+    `${JSON.stringify(
+      {
+        main: bundle,
+        output: blob,
+        disableExperimentalSEAWarning: true,
+        useSnapshot: false,
+        useCodeCache: false,
+        execArgvExtension: 'none'
+      },
+      null,
+      2
+    )}\n`,
+    'utf8'
+  )
   await run(generatorNode, ['--experimental-sea-config', seaConfig])
 
   if (platform() === 'darwin') {
@@ -223,7 +218,10 @@ async function main() {
   }
 
   await copyFile(join(projectRoot, 'resources', 'defaults.json'), join(releaseRoot, 'defaults.json'))
-  await copyFile(join(projectRoot, 'resources', 'wur-overrides.template.ini'), join(releaseRoot, 'wur-overrides.template.ini'))
+  await copyFile(
+    join(projectRoot, 'resources', 'wur-overrides.template.ini'),
+    join(releaseRoot, 'wur-overrides.template.ini')
+  )
   await run(outputBinary, ['--help'])
   console.log(`\nStandalone CLI created at ${outputBinary}`)
   if (!clean) console.log('Existing portable state in release/ was preserved.')

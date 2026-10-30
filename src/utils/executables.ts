@@ -6,5 +6,9 @@ const windowsExecutableSuffix = /\.(?:com|exe|bat|cmd|vbs|vbe|js|jse|wsf|wsh|msc
 
 export function isExecutableFallback(value: string | undefined): boolean {
   if (!value || !windowsExecutableSuffix.test(value)) return false
-  try { return statSync(resolve(value)).isFile() } catch { return false }
+  try {
+    return statSync(resolve(value)).isFile()
+  } catch {
+    return false
+  }
 }

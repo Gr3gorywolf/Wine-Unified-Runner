@@ -16,8 +16,14 @@ function firstCommandToken(argv: string[]): string | undefined {
   let skipNext = false
   for (const token of argv) {
     if (token === '--') break
-    if (skipNext) { skipNext = false; continue }
-    if (token === '--home') { skipNext = true; continue }
+    if (skipNext) {
+      skipNext = false
+      continue
+    }
+    if (token === '--home') {
+      skipNext = true
+      continue
+    }
     if (token === '--json' || token.startsWith('--home=')) continue
     if (token.startsWith('-')) continue
     return token
@@ -26,10 +32,7 @@ function firstCommandToken(argv: string[]): string | undefined {
 }
 
 /** Inserts the native `run` command for the documented `wur GAME.exe` form. */
-export function normalizeExecutableFallback(
-  argv: string[],
-  isExecutable: (value: string) => boolean
-): string[] {
+export function normalizeExecutableFallback(argv: string[], isExecutable: (value: string) => boolean): string[] {
   const candidate = firstCommandToken(argv)
   if (!candidate || !isExecutable(candidate)) return argv
   const index = argv.indexOf(candidate)

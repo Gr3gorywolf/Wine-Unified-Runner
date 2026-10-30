@@ -6,7 +6,19 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import test from 'node:test'
-import { applyGameOverrides, containerManifestFile, loadAppConfig, loadContainer, loadDefaults, loadGameOverrides, newContainer, parseRuntimeReference, parseSetExpression, saveContainer, setAtPath } from '../src/config.js'
+import {
+  applyGameOverrides,
+  containerManifestFile,
+  loadAppConfig,
+  loadContainer,
+  loadDefaults,
+  loadGameOverrides,
+  newContainer,
+  parseRuntimeReference,
+  parseSetExpression,
+  saveContainer,
+  setAtPath
+} from '../src/config.js'
 import { removeComponent } from '../src/components.js'
 import { buildContainer, createContainer, removeContainer } from '../src/containers.js'
 import { buildLaunchEnvironment, runRuntime } from '../src/launch.js'
@@ -107,7 +119,10 @@ test('per-game INI overrides are created from the template and apply without cha
   try {
     await mkdir(dirname(executable), { recursive: true })
     await writeFile(executable, '')
-    await writeFile(paths.overrideTemplate, `; template\n[container]\nname = sidecar-container\nignored = value\n[runtime]\nsource = not-a-runtime\nversion = custom-runtime\n[components]\ndxvk.version = 2.4\ndxvkNvapi.enabled = true\nvkd3d.enabled = perhaps\nunknown.enabled = true\n[launch]\nenableHdr = true\nenableFsync = perhaps\ndxvkFrameRate = 60\nfsrSharpness = not-a-number\nunknown = ignored\n[environment]\nDXVK_ASYNC = 1\ninvalid-name = ignored\n[unknown-section]\nvalue = ignored\n`)
+    await writeFile(
+      paths.overrideTemplate,
+      `; template\n[container]\nname = sidecar-container\nignored = value\n[runtime]\nsource = not-a-runtime\nversion = custom-runtime\n[components]\ndxvk.version = 2.4\ndxvkNvapi.enabled = true\nvkd3d.enabled = perhaps\nunknown.enabled = true\n[launch]\nenableHdr = true\nenableFsync = perhaps\ndxvkFrameRate = 60\nfsrSharpness = not-a-number\nunknown = ignored\n[environment]\nDXVK_ASYNC = 1\ninvalid-name = ignored\n[unknown-section]\nvalue = ignored\n`
+    )
 
     const loaded = await loadGameOverrides(executable, paths)
     assert.equal(loaded.file, sidecar)
@@ -237,16 +252,25 @@ test('runRuntime returns after its primary process exits and prunes remaining de
     }
   } satisfies ContainerConfig
   try {
-    const result = await runRuntime(container, {
-      id: 'test-runtime',
-      source: 'wine-staging-macos',
-      version: 'test',
-      kind: 'wine',
-      path: '/tmp',
-      bin: '/bin/sh',
-      installedAt: '2026-01-01T00:00:00.000Z',
-      release: { date: '2026-01-01', download: 'https://example.invalid/runtime', notesUrl: 'https://example.invalid' }
-    }, ['-c', `sleep 10 & echo $! > "${childPidFile}"; exit 0`], { inheritStdio: false })
+    const result = await runRuntime(
+      container,
+      {
+        id: 'test-runtime',
+        source: 'wine-staging-macos',
+        version: 'test',
+        kind: 'wine',
+        path: '/tmp',
+        bin: '/bin/sh',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        release: {
+          date: '2026-01-01',
+          download: 'https://example.invalid/runtime',
+          notesUrl: 'https://example.invalid'
+        }
+      },
+      ['-c', `sleep 10 & echo $! > "${childPidFile}"; exit 0`],
+      { inheritStdio: false }
+    )
     assert.equal(result.code, 0)
     assert.ok(performance.now() - started < 1_000)
     const childPid = Number((await readFile(childPidFile, 'utf8')).trim())
@@ -254,7 +278,12 @@ test('runRuntime returns after its primary process exits and prunes remaining de
 
     let alive = true
     for (let attempt = 0; attempt < 40; attempt++) {
-      try { process.kill(childPid, 0) } catch { alive = false; break }
+      try {
+        process.kill(childPid, 0)
+      } catch {
+        alive = false
+        break
+      }
       await new Promise<void>((resolve) => setTimeout(resolve, 25))
     }
     assert.equal(alive, false, 'the child process should be gone when runRuntime returns')
@@ -322,7 +351,11 @@ test('remove operations delete only portable managed data and clear the default 
       version: 'test-version',
       path: componentPath,
       installedAt: '2026-01-01T00:00:00.000Z',
-      release: { date: '2026-01-01', download: 'https://example.invalid/component', notesUrl: 'https://example.invalid' }
+      release: {
+        date: '2026-01-01',
+        download: 'https://example.invalid/component',
+        notesUrl: 'https://example.invalid'
+      }
     })
     await createContainer('removable', { defaults: testDefaults, initialize: false }, paths)
 
@@ -376,9 +409,10 @@ test('JSON installs stream progress events and report errors as JSON', async () 
     version: 'test',
     kind: runtimeSource === 'ge-proton' ? 'proton' : 'crossover',
     path: join(root, 'runtimes', `${runtimeSource}--test`),
-    bin: runtimeSource === 'ge-proton'
-      ? join(root, 'runtimes', `${runtimeSource}--test`, 'proton')
-      : join(root, 'runtimes', `${runtimeSource}--test`, 'Contents', 'Resources', 'wine', 'bin', 'wine64'),
+    bin:
+      runtimeSource === 'ge-proton'
+        ? join(root, 'runtimes', `${runtimeSource}--test`, 'proton')
+        : join(root, 'runtimes', `${runtimeSource}--test`, 'Contents', 'Resources', 'wine', 'bin', 'wine64'),
     installedAt: '2026-01-01T00:00:00.000Z',
     release: { date: '2026-01-01', download: 'https://example.invalid/runtime', notesUrl: 'https://example.invalid' }
   } satisfies InstalledRuntime
@@ -393,19 +427,53 @@ test('JSON installs stream progress events and report errors as JSON', async () 
       version: 'test',
       path: componentPath,
       installedAt: '2026-01-01T00:00:00.000Z',
-      release: { date: '2026-01-01', download: 'https://example.invalid/component', notesUrl: 'https://example.invalid' }
+      release: {
+        date: '2026-01-01',
+        download: 'https://example.invalid/component',
+        notesUrl: 'https://example.invalid'
+      }
     })
     const cli = resolve(process.cwd(), 'dist', 'src', 'cli.js')
-    const runtimeResult = await execFileAsync(process.execPath, [cli, '--home', root, 'runtime', 'install', runtimeSource, 'test', '--json'])
-    const componentResult = await execFileAsync(process.execPath, [cli, '--home', root, 'component', 'install', 'dxvk', 'test', '--json'])
-    assert.deepEqual(runtimeResult.stdout.trim().split('\n').map((line) => JSON.parse(line)), [
-      { name: runtimeSource, progress: 0 },
-      { name: runtimeSource, progress: 100 }
+    const runtimeResult = await execFileAsync(process.execPath, [
+      cli,
+      '--home',
+      root,
+      'runtime',
+      'install',
+      runtimeSource,
+      'test',
+      '--json'
     ])
-    assert.deepEqual(componentResult.stdout.trim().split('\n').map((line) => JSON.parse(line)), [
-      { name: 'dxvk', progress: 0 },
-      { name: 'dxvk', progress: 100 }
+    const componentResult = await execFileAsync(process.execPath, [
+      cli,
+      '--home',
+      root,
+      'component',
+      'install',
+      'dxvk',
+      'test',
+      '--json'
     ])
+    assert.deepEqual(
+      runtimeResult.stdout
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+      [
+        { name: runtimeSource, progress: 0 },
+        { name: runtimeSource, progress: 100 }
+      ]
+    )
+    assert.deepEqual(
+      componentResult.stdout
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+      [
+        { name: 'dxvk', progress: 0 },
+        { name: 'dxvk', progress: 100 }
+      ]
+    )
     await assert.rejects(
       execFileAsync(process.execPath, [cli, '--home', root, 'component', 'install', 'unknown', '--json']),
       (error: { stdout?: string }) => {
@@ -482,9 +550,18 @@ test('Proton environment mirrors Heroic compatibility variables', () => {
     }
   } satisfies ContainerConfig
   const runtime = {
-    id: 'ge-proton--GE-Proton10-1', source: 'ge-proton', version: 'GE-Proton10-1',
-    kind: 'proton', path: '/tmp/proton', bin: '/tmp/proton/proton', installedAt: '2026-01-01T00:00:00.000Z',
-    release: { date: '2026-01-01', download: 'https://example.invalid/proton.tar.gz', notesUrl: 'https://example.invalid' }
+    id: 'ge-proton--GE-Proton10-1',
+    source: 'ge-proton',
+    version: 'GE-Proton10-1',
+    kind: 'proton',
+    path: '/tmp/proton',
+    bin: '/tmp/proton/proton',
+    installedAt: '2026-01-01T00:00:00.000Z',
+    release: {
+      date: '2026-01-01',
+      download: 'https://example.invalid/proton.tar.gz',
+      notesUrl: 'https://example.invalid'
+    }
   } satisfies InstalledRuntime
   const env = buildLaunchEnvironment(container, runtime)
   assert.equal(env.STEAM_COMPAT_DATA_PATH, '/tmp/prefix')

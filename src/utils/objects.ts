@@ -1,10 +1,12 @@
 export function objectValue(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`${label} must be a JSON object.`)
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new Error(`${label} must be a JSON object.`)
   return value as Record<string, unknown>
 }
 
 export function onlyKeys(value: Record<string, unknown>, allowed: readonly string[], label: string): void {
-  for (const key of Object.keys(value)) if (!allowed.includes(key)) throw new Error(`${label} contains unsupported field "${key}".`)
+  for (const key of Object.keys(value))
+    if (!allowed.includes(key)) throw new Error(`${label} contains unsupported field "${key}".`)
 }
 
 export function optionalString(value: unknown, label: string): string | undefined {

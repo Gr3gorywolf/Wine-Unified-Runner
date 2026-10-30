@@ -10,18 +10,16 @@ export { readJson, writeJson } from './utils/json.js'
 declare const __WUR_STANDALONE__: boolean | undefined
 
 const standaloneBinary = typeof __WUR_STANDALONE__ !== 'undefined' && __WUR_STANDALONE__
-const moduleDirectory = standaloneBinary
-  ? dirname(process.execPath)
-  : dirname(fileURLToPath(import.meta.url))
+const moduleDirectory = standaloneBinary ? dirname(process.execPath) : dirname(fileURLToPath(import.meta.url))
 
 export function getPaths(): Paths {
   // PROTON_CLI_HOME remains a compatibility alias for pre-WUR installations.
   const configuredRoot = process.env.WUR_HOME || process.env.PROTON_CLI_HOME
   const root = configuredRoot
     ? resolve(configuredRoot)
-    // dist/src contains the executable module and dist is the portable CLI folder.
-    // Keeping state here makes removing this folder a complete uninstall.
-    : standaloneBinary
+    : // dist/src contains the executable module and dist is the portable CLI folder.
+      // Keeping state here makes removing this folder a complete uninstall.
+      standaloneBinary
       ? moduleDirectory
       : resolve(moduleDirectory, '..')
 
@@ -49,12 +47,8 @@ export function getPaths(): Paths {
     // The template remains beside the executable; the editable, platform-aware
     // copy lives in the same self-contained installation under config/.
     defaults: join(root, 'config', 'defaults.json'),
-    bundledDefaults: existsSync(installedDefaults)
-      ? installedDefaults
-      : developmentDefaults,
-    overrideTemplate: existsSync(installedOverrideTemplate)
-      ? installedOverrideTemplate
-      : developmentOverrideTemplate
+    bundledDefaults: existsSync(installedDefaults) ? installedDefaults : developmentDefaults,
+    overrideTemplate: existsSync(installedOverrideTemplate) ? installedOverrideTemplate : developmentOverrideTemplate
   }
 }
 

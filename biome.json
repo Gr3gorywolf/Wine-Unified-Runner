@@ -1,0 +1,36 @@
+{
+    "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+    "files": {
+        "includes": [
+            "**",
+            "!!dist/**",
+            "!!release/**",
+            "!!.build/**",
+            "!!.cache/**",
+            "!!package-lock.json",
+            "!!pnpm-lock.yaml"
+        ]
+    },
+    "formatter": {
+        "enabled": true,
+        "includes": [
+            "src/**",
+            "scripts/**",
+            "test/**",
+            "resources/defaults.json",
+            "package.json",
+            "tsconfig.json",
+            "biome.json"
+        ],
+        "lineWidth": 120,
+        "useEditorconfig": true
+    },
+    "javascript": {
+        "formatter": {
+            "arrowParentheses": "always",
+            "quoteStyle": "single",
+            "semicolons": "asNeeded",
+            "trailingCommas": "none"
+        }
+    }
+}

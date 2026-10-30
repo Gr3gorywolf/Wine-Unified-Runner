@@ -76,9 +76,11 @@ export async function downloadFile(
   tracker.on('data', (chunk: Buffer) => {
     received += chunk.length
     hash.update(chunk)
-    if (total) reportProgress(received / total * 100)
+    if (total) reportProgress((received / total) * 100)
     if (!options.quiet && process.stderr.isTTY && Date.now() - lastReport > 400) {
-      const progress = total ? ` ${(received / total * 100).toFixed(1)}%` : ` ${(received / 1024 / 1024).toFixed(1)} MiB`
+      const progress = total
+        ? ` ${((received / total) * 100).toFixed(1)}%`
+        : ` ${(received / 1024 / 1024).toFixed(1)} MiB`
       process.stderr.write(`\rDownloading ${label}:${progress}`)
       lastReport = Date.now()
     }
@@ -102,19 +104,33 @@ export async function verifySha512(checksumUrl: string, digest: string): Promise
   }
 }
 
-export async function extractArchive(archive: string, destination: string, stripComponents = 1, quiet = false): Promise<void> {
+export async function extractArchive(
+  archive: string,
+  destination: string,
+  stripComponents = 1,
+  quiet = false
+): Promise<void> {
   await mkdir(destination, { recursive: true })
   const args = ['-xf', archive, '-C', destination]
   if (stripComponents > 0) args.push(`--strip-components=${stripComponents}`)
   await new Promise<void>((resolve, reject) => {
     const child = spawn('tar', args, { stdio: quiet ? ['ignore', 'ignore', 'pipe'] : ['ignore', 'inherit', 'inherit'] })
     let stderr = ''
-    if (quiet) child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+    if (quiet)
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString()
+      })
     child.once('error', (error) => reject(new Error(`Could not start tar: ${error.message}`)))
-    child.once('close', (code) => code === 0 ? resolve() : reject(new Error(`tar exited with status ${code}${stderr.trim() ? `: ${stderr.trim()}` : ''}`)))
+    child.once('close', (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`tar exited with status ${code}${stderr.trim() ? `: ${stderr.trim()}` : ''}`))
+    )
   })
 }
 
 export async function sha512File(file: string): Promise<string> {
-  return createHash('sha512').update(await readFile(file)).digest('hex')
+  return createHash('sha512')
+    .update(await readFile(file))
+    .digest('hex')
 }
