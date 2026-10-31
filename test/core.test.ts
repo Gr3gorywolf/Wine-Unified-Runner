@@ -103,6 +103,14 @@ test('the compiled CLI keeps its default state beside the executable', () => {
   }
 })
 
+test('container exec documents built-in tools and graphics diagnostics', async () => {
+  const cli = resolve(process.cwd(), 'dist', 'src', 'cli.js')
+  const result = await execFileAsync(process.execPath, [cli, 'container', 'exec', '--help'])
+  assert.match(result.stdout, /explorer\.exe/)
+  assert.match(result.stdout, /dxdiag\.exe/)
+  assert.match(result.stdout, /OpenGL or Vulkan diagnostic/)
+})
+
 test('settings path parsing preserves JSON values', () => {
   const target: Record<string, unknown> = { launch: {} }
   const setting = parseSetExpression('launch.enableWayland=true')

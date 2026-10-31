@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { loadContainer, parseRuntimeReference, saveContainer } from '../services/config.js'
 import {
   buildContainer,
@@ -6,18 +7,22 @@ import {
   defaultContainer,
   listBuildableContainers,
   listContainers,
+  prepareContainer,
   removeContainer,
   setDefaultContainer
 } from '../services/containers.js'
+import { runRuntime, stopWineServer } from '../services/launch.js'
 import { getPaths } from '../services/paths.js'
 import type {
   BuildOptions,
   ContainerConfigureOptions,
   ContainerCreateOptions,
+  ContainerExecOptions,
   ContainerNameOptions
 } from '../types/index.js'
 import { containerComponentKey, requireContainerName } from '../utils/cli.js'
 import { output } from '../utils/output.js'
+import { componentRuntimeEnvironment } from '../utils/runtimeEnvironment.js'
 import { applySettings } from '../utils/settings.js'
 
 export async function buildContainers(
@@ -117,4 +122,29 @@ export async function removeContainerConfiguration(
   json: boolean
 ): Promise<void> {
   output({ removed: true, ...(await removeContainer(requireContainerName(nameArgument, options), getPaths())) }, json)
+}
+
+/** Executes a Windows executable or Wine built-in with the container's complete runtime environment. */
+export async function executeInContainer(
+  program: string,
+  programArguments: string[],
+  options: ContainerExecOptions,
+  json: boolean
+): Promise<void> {
+  const paths = getPaths()
+  const container = await loadContainer(requireContainerName(undefined, options), paths)
+  const prepared = await prepareContainer(container, paths)
+  const execution = await (async () => {
+    try {
+      return await runRuntime(prepared.container, prepared.runtime, [program, ...programArguments], {
+        protonVerb: prepared.runtime.kind === 'proton' ? 'waitforexitandrun' : 'run',
+        cwd: options.cwd ? resolve(options.cwd) : undefined,
+        extraEnv: await componentRuntimeEnvironment(prepared.container)
+      })
+    } finally {
+      await stopWineServer(prepared.container, prepared.runtime)
+    }
+  })()
+  if (json) output(execution, true)
+  if (execution.code !== 0) process.exitCode = execution.code || 1
 }

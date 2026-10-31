@@ -5,6 +5,7 @@ import {
   buildContainers,
   configureContainer,
   createContainerConfiguration,
+  executeInContainer,
   installRecommended,
   installSelectedComponent,
   installSelectedRuntime,
@@ -26,6 +27,7 @@ import type {
   ComponentListOptions,
   ContainerConfigureOptions,
   ContainerCreateOptions,
+  ContainerExecOptions,
   ContainerNameOptions,
   ForceOptions,
   GlobalOptions,
@@ -216,6 +218,20 @@ function createProgram(): Command {
     .option('--name <name>', 'container name')
     .action((name: string | undefined, options: ContainerNameOptions, command: Command) =>
       removeContainerConfiguration(name, options, commandUsesJson(command))
+    )
+  container
+    .command('exec')
+    .description('execute a Windows or Wine program inside a prepared container')
+    .argument('<program>', 'Windows executable or Wine command')
+    .argument('[arguments...]', 'arguments passed to the program')
+    .option('--name <name>', 'container name')
+    .option('--cwd <directory>', 'host working directory')
+    .addHelpText(
+      'after',
+      `\n${colors.bold('Common programs:')} explorer.exe, cmd.exe, taskmgr.exe, regedit.exe, control.exe, notepad.exe, winecfg.\n${colors.bold('Graphics diagnostics:')} dxdiag.exe for DirectX; run an OpenGL or Vulkan diagnostic installed in the prefix, such as glview.exe, vkcube.exe, or vulkaninfo.exe.\n${colors.dim('Examples: wur container exec explorer.exe --name default; wur container exec dxdiag.exe --name default -- /t dxdiag.txt')}`
+    )
+    .action((program: string, programArguments: string[], options: ContainerExecOptions, command: Command) =>
+      executeInContainer(program, programArguments || [], options, commandUsesJson(command))
     )
 
   // #endregion Container commands

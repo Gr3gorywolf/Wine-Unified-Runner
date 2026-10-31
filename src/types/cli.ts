@@ -35,6 +35,10 @@ export interface ContainerNameOptions {
   name?: string
 }
 
+export interface ContainerExecOptions extends ContainerNameOptions {
+  cwd?: string
+}
+
 export interface ContainerCreateOptions extends ContainerNameOptions {
   runtime?: string
   component: string[]

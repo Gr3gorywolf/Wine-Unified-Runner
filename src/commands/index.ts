@@ -7,6 +7,7 @@ export {
   buildContainers,
   configureContainer,
   createContainerConfiguration,
+  executeInContainer,
   listContainerConfigurations,
   removeContainerConfiguration,
   selectDefaultContainer,

@@ -165,6 +165,28 @@ wur container remove --name cyberpunk
 
 The runtime declaration is portable: it stores only `source` and `version`, never a path to a local runtime installation. WUR finds or installs that runtime when the container is built or launched.
 
+### Run tools inside a container
+
+`container exec` starts a Windows executable or Wine built-in with the selected prefix, runtime, components, and launch environment. It is useful for inspecting or repairing a prefix without launching a game.
+
+```sh
+# Common built-in tools.
+wur container exec explorer.exe --name cyberpunk
+wur container exec cmd.exe --name cyberpunk
+wur container exec taskmgr.exe --name cyberpunk
+wur container exec regedit.exe --name cyberpunk
+wur container exec winecfg --name cyberpunk
+
+# Produce Wine's DirectX diagnostic report in the current directory.
+wur container exec dxdiag.exe --name cyberpunk -- /t dxdiag.txt
+
+# Run an OpenGL or Vulkan diagnostic that is installed in the prefix.
+wur container exec glview.exe --name cyberpunk
+wur container exec vkcube.exe --name cyberpunk
+```
+
+Wine provides `dxdiag.exe` for DirectX diagnostics. OpenGL and Vulkan test programs are not bundled by Wine, so install or provide a compatible Windows diagnostic such as `glview.exe`, `vkcube.exe`, or `vulkaninfo.exe`, then pass it to `container exec`.
+
 ### Build containers from a manifest
 
 Create `containers/<name>/config.json` with only the settings that differ from the defaults:

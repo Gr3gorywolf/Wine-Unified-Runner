@@ -21,6 +21,7 @@ export type {
   ComponentListOptions,
   ContainerConfigureOptions,
   ContainerCreateOptions,
+  ContainerExecOptions,
   ContainerNameOptions,
   ForceOptions,
   GlobalOptions,
