@@ -30,7 +30,7 @@ export async function runExecutable(
         protonVerb: prepared.runtime.kind === 'proton' ? 'waitforexitandrun' : 'run',
         cwd: options.cwd ? resolve(options.cwd) : dirname(executablePath),
         installPath: dirname(executablePath),
-        extraEnv: await componentRuntimeEnvironment(prepared.container)
+        extraEnv: await componentRuntimeEnvironment(prepared.container, prepared.runtime)
       })
     } finally {
       await stopWineServer(prepared.container, prepared.runtime)

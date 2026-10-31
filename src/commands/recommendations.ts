@@ -24,6 +24,7 @@ export function suggestConfiguration(json: boolean): void {
         source: source.id,
         label: source.label,
         kind: source.kind,
+        ignoredComponents: source.ignoredComponents,
         runnable: canRunRuntimeOnThisSystem(source.id),
         recommended: source.id === suggestedRuntime,
         note:

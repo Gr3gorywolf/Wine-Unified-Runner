@@ -126,6 +126,7 @@ wur runtime remove game-porting-toolkit latest
 ```
 
 There is no separate Proton command: Proton is one runtime kind among the sources managed by `wur runtime`.
+Each listed runtime also exposes `ignoredComponents`: components WUR will not inject or override for that runtime. For example, Wine-CrossOver owns its graphics stack, so its DXVK override is ignored.
 
 ## Manage components
 
@@ -141,7 +142,7 @@ wur component install dxmt
 wur component remove dxvk-macos latest
 ```
 
-On macOS, the generic `dxvk` component resolves to `dxvk-macos`; on Linux it resolves to normal DXVK. DXMT is available for supported Wine Staging configurations. Proton includes its own graphics stack, so WUR does not overwrite it.
+On macOS, the generic `dxvk` component resolves to `dxvk-macos`; on Linux it resolves to normal DXVK. DXMT remains available for manual experimentation, but it is not applied automatically to containers. Runtime-specific exclusions are declared by each runtime's `ignoredComponents` metadata.
 
 ## Containers and prefixes
 

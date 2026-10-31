@@ -7,6 +7,8 @@ export interface RuntimeSourceInfo {
   apiUrl: string
   kind: RuntimeKind
   platforms: NodeJS.Platform[]
+  /** Components WUR must never inject or override for this runtime. */
+  ignoredComponents: ComponentName[]
   stagingOnly?: boolean
 }
 

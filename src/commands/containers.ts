@@ -139,7 +139,7 @@ export async function executeInContainer(
       return await runRuntime(prepared.container, prepared.runtime, [program, ...programArguments], {
         protonVerb: prepared.runtime.kind === 'proton' ? 'waitforexitandrun' : 'run',
         cwd: options.cwd ? resolve(options.cwd) : undefined,
-        extraEnv: await componentRuntimeEnvironment(prepared.container)
+        extraEnv: await componentRuntimeEnvironment(prepared.container, prepared.runtime)
       })
     } finally {
       await stopWineServer(prepared.container, prepared.runtime)

@@ -1,7 +1,7 @@
 import { defaultSourceForPlatform } from '../services/config.js'
 import { getPaths } from '../services/paths.js'
 import { installRuntime, listInstalledRuntimes, listReleases, removeRuntime } from '../services/runtime.js'
-import { canRunRuntimeOnThisSystem, sourcesForPlatform } from '../services/sources.js'
+import { canRunRuntimeOnThisSystem, runtimeSources, sourcesForPlatform } from '../services/sources.js'
 import type { ForceOptions, RuntimeListOptions } from '../types/index.js'
 import { parseRuntimeSource } from '../utils/cli.js'
 import { formatBytes, installProgressReporter, output } from '../utils/output.js'
@@ -12,7 +12,11 @@ export async function listRuntimes(options: RuntimeListOptions, json: boolean): 
   const source = options.source ? parseRuntimeSource(options.source) : undefined
   if (!remote) {
     const installed = await listInstalledRuntimes(paths)
-    output(source ? installed.filter((runtime) => runtime.source === source) : installed, json)
+    const selected = source ? installed.filter((runtime) => runtime.source === source) : installed
+    output(
+      selected.map((runtime) => ({ ...runtime, ignoredComponents: runtimeSources[runtime.source].ignoredComponents })),
+      json
+    )
     return
   }
   if (source && !options.all && !canRunRuntimeOnThisSystem(source)) {
@@ -28,7 +32,8 @@ export async function listRuntimes(options: RuntimeListOptions, json: boolean): 
       date: release.date,
       size: formatBytes(release.size),
       latest: Boolean(release.latest),
-      recommended: release.source === defaultSourceForPlatform()
+      recommended: release.source === defaultSourceForPlatform(),
+      ignoredComponents: runtimeSources[release.source].ignoredComponents
     })),
     json
   )

@@ -23,6 +23,7 @@ import { buildContainer, createContainer, removeContainer } from '../src/service
 import { buildLaunchEnvironment, runRuntime } from '../src/services/launch.js'
 import { isExecutableFallback } from '../src/services/invocation.js'
 import { getPaths } from '../src/services/paths.js'
+import { ignoresComponent, runtimeSources } from '../src/services/sources.js'
 import { readJson, writeJson } from '../src/utils/json.js'
 import { containerManifestFile } from '../src/utils/filesystem.js'
 import { ensureSharedUserProfile } from '../src/services/profile.js'
@@ -109,6 +110,18 @@ test('container exec documents built-in tools and graphics diagnostics', async (
   assert.match(result.stdout, /explorer\.exe/)
   assert.match(result.stdout, /dxdiag\.exe/)
   assert.match(result.stdout, /OpenGL or Vulkan diagnostic/)
+})
+
+test('runtime component exclusions are declared by runtime metadata', () => {
+  assert.equal(ignoresComponent('wine-crossover', 'dxvk-macos'), true)
+  assert.equal(ignoresComponent('wine-staging-macos', 'dxvk-macos'), false)
+  assert.deepEqual(runtimeSources['wine-crossover'].ignoredComponents, [
+    'dxvk',
+    'dxvk-nvapi',
+    'vkd3d',
+    'dxvk-macos',
+    'dxmt'
+  ])
 })
 
 test('settings path parsing preserves JSON values', () => {
@@ -399,7 +412,9 @@ test('runtime list follows the component list convention: local by default and r
     await writeJson(join(runtime.path, 'runtime.json'), runtime)
     const cli = resolve(process.cwd(), 'dist', 'src', 'cli.js')
     const local = await execFileAsync(process.execPath, [cli, '--home', root, 'runtime', 'list', '--json'])
-    assert.deepEqual(JSON.parse(local.stdout), [runtime])
+    assert.deepEqual(JSON.parse(local.stdout), [
+      { ...runtime, ignoredComponents: runtimeSources['ge-proton'].ignoredComponents }
+    ])
     await assert.rejects(
       execFileAsync(process.execPath, [cli, '--home', root, 'runtime', 'installed']),
       /Use runtime list, runtime install, or runtime remove/

@@ -1,6 +1,5 @@
 import type { Command } from 'commander'
-import { isRuntimeSource } from '../services/sources.js'
-import { componentNames } from '../services/sources.js'
+import { componentNames, ignoresComponent, isRuntimeSource } from '../services/sources.js'
 import type {
   ComponentName,
   ContainerConfig,
@@ -45,7 +44,7 @@ export function containerComponentKey(name: string): keyof ContainerConfig['comp
 }
 
 export function recommendedComponentNames(
-  container: Pick<ContainerConfig, 'components'>
+  container: Pick<ContainerConfig, 'components' | 'runtime'>
 ): Array<{ name: ComponentName; version: string }> {
   const selected: Array<{ name: ComponentName; version: string }> = []
   if (container.components.dxvk.enabled) {
@@ -64,5 +63,5 @@ export function recommendedComponentNames(
     if (container.components.battleyeRuntime.enabled)
       selected.push({ name: 'battleye-runtime', version: container.components.battleyeRuntime.version })
   }
-  return selected
+  return selected.filter((component) => !ignoresComponent(container.runtime.source, component.name))
 }

@@ -15,7 +15,7 @@ import { initializePrefix, runRuntime, stopWineServer } from './launch.js'
 import { ensurePaths, getPaths } from './paths.js'
 import { ensureSharedUserProfile } from './profile.js'
 import { findInstalledRuntime, installRuntime } from './runtime.js'
-import { canRunRuntimeOnThisSystem, runtimeSources, sourcesForPlatform } from './sources.js'
+import { canRunRuntimeOnThisSystem, ignoresComponent, runtimeSources, sourcesForPlatform } from './sources.js'
 import type {
   ContainerConfig,
   ContainerWineComponentRequest,
@@ -81,14 +81,6 @@ async function prepareWineComponents(
   runtime: InstalledRuntime,
   paths: Paths
 ): Promise<void> {
-  if (runtime.kind === 'proton') {
-    // Proton brings its own DXVK and VKD3D. Copying another version over it is unsafe.
-    return
-  }
-  if (runtime.kind === 'toolkit') {
-    // Heroic avoids changing GPTK's D3DMetal setup for the same reason.
-    return
-  }
   const requested: ContainerWineComponentRequest[] = [
     { selection: 'dxvk', name: process.platform === 'darwin' ? 'dxvk-macos' : 'dxvk' },
     { selection: 'dxvkNvapi', name: 'dxvk-nvapi' },
@@ -96,8 +88,7 @@ async function prepareWineComponents(
   ]
   for (const item of requested) {
     const selected = container.components[item.selection]
-    if (!selected.enabled) continue
-    if (process.platform === 'darwin' && item.name !== 'dxvk-macos') continue
+    if (!selected.enabled || ignoresComponent(runtime.source, item.name)) continue
     const installed = await findInstalledComponent(item.name, selected.version, paths)
     const component = installed || (await installComponent(item.name, selected.version, false, paths))
     const marker = join(container.prefix, `current_${item.name}`)
@@ -108,14 +99,18 @@ async function prepareWineComponents(
   }
 }
 
-async function prepareRuntimeComponents(container: ContainerConfig, paths: Paths): Promise<void> {
+async function prepareRuntimeComponents(
+  container: ContainerConfig,
+  runtime: InstalledRuntime,
+  paths: Paths
+): Promise<void> {
   const requested: Array<{ enabled: boolean; version: string; name: 'eac-runtime' | 'battleye-runtime' }> = [
     { ...container.components.eacRuntime, name: 'eac-runtime' },
     { ...container.components.battleyeRuntime, name: 'battleye-runtime' }
   ]
   if (process.platform !== 'linux') return
   for (const component of requested) {
-    if (component.enabled) {
+    if (component.enabled && !ignoresComponent(runtime.source, component.name)) {
       const installed = await findInstalledComponent(component.name, component.version, paths)
       if (!installed) await installComponent(component.name, component.version, false, paths)
     }
@@ -141,7 +136,7 @@ export async function prepareContainer(
   await initializePrefix(container, runtime)
   await ensureSharedUserProfile(container, runtime, paths)
   await prepareWineComponents(container, runtime, paths)
-  await prepareRuntimeComponents(container, paths)
+  await prepareRuntimeComponents(container, runtime, paths)
   await stopWineServer(container, runtime)
   return { container, runtime }
 }

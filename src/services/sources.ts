@@ -16,35 +16,40 @@ export const runtimeSources: Record<RuntimeSource, RuntimeSourceInfo> = {
     label: 'GE-Proton',
     apiUrl: 'https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases',
     kind: 'proton',
-    platforms: ['linux']
+    platforms: ['linux'],
+    ignoredComponents: ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxvk-macos', 'dxmt']
   },
   proton: {
     id: 'proton',
     label: 'Valve Proton',
     apiUrl: 'https://api.github.com/repos/ValveSoftware/Proton/releases',
     kind: 'proton',
-    platforms: ['linux']
+    platforms: ['linux'],
+    ignoredComponents: ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxvk-macos', 'dxmt']
   },
   'proton-cachyos': {
     id: 'proton-cachyos',
     label: 'Proton-CachyOS',
     apiUrl: 'https://api.github.com/repos/CachyOS/proton-cachyos/releases',
     kind: 'proton',
-    platforms: ['linux']
+    platforms: ['linux'],
+    ignoredComponents: ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxvk-macos', 'dxmt']
   },
   'wine-lutris': {
     id: 'wine-lutris',
     label: 'Wine-Lutris',
     apiUrl: 'https://api.github.com/repos/lutris/wine/releases',
     kind: 'wine',
-    platforms: ['linux']
+    platforms: ['linux'],
+    ignoredComponents: ['dxvk-macos', 'dxmt']
   },
   'wine-crossover': {
     id: 'wine-crossover',
     label: 'Wine-CrossOver',
     apiUrl: 'https://api.github.com/repos/Heroic-Games-Launcher/wine-crossover/releases',
     kind: 'crossover',
-    platforms: ['darwin']
+    platforms: ['darwin'],
+    ignoredComponents: ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxvk-macos', 'dxmt']
   },
   'wine-staging-macos': {
     id: 'wine-staging-macos',
@@ -52,6 +57,7 @@ export const runtimeSources: Record<RuntimeSource, RuntimeSourceInfo> = {
     apiUrl: 'https://api.github.com/repos/Gcenx/macOS_Wine_builds/releases',
     kind: 'wine',
     platforms: ['darwin'],
+    ignoredComponents: ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxmt'],
     stagingOnly: true
   },
   'game-porting-toolkit': {
@@ -59,7 +65,8 @@ export const runtimeSources: Record<RuntimeSource, RuntimeSourceInfo> = {
     label: 'Game Porting Toolkit',
     apiUrl: 'https://api.github.com/repos/Gcenx/game-porting-toolkit/releases',
     kind: 'toolkit',
-    platforms: ['darwin']
+    platforms: ['darwin'],
+    ignoredComponents: ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxvk-macos', 'dxmt']
   }
 }
 
@@ -76,6 +83,11 @@ export const componentNames: ComponentName[] = [
 
 export function isRuntimeSource(value: string): value is RuntimeSource {
   return runtimeSourceNames.has(value as RuntimeSource)
+}
+
+/** Whether a runtime owns this component itself or cannot accept its override. */
+export function ignoresComponent(source: RuntimeSource, component: ComponentName): boolean {
+  return runtimeSources[source].ignoredComponents.includes(component)
 }
 
 export function sourcesForPlatform(includeAll = false): RuntimeSourceInfo[] {
@@ -99,8 +111,12 @@ export function compatibleComponentRecommendations(includeAll = false): Componen
     { name: 'umu', recommended: false, note: 'Optional Steam Runtime launcher integration' }
   ]
   const mac: ComponentRecommendation[] = [
-    { name: 'dxvk-macos', recommended: true, note: 'DXVK for Wine Staging/CrossOver prefixes; GPTK is left untouched' },
-    { name: 'dxmt', recommended: false, note: 'Optional DXMT files for a Wine Staging variant on Apple Silicon' }
+    {
+      name: 'dxvk-macos',
+      recommended: true,
+      note: 'DXVK for Wine Staging prefixes; CrossOver and GPTK are left untouched'
+    },
+    { name: 'dxmt', recommended: false, note: 'Downloadable for manual experimentation; not injected into containers' }
   ]
   const current = process.platform === 'linux' ? linux : process.platform === 'darwin' ? mac : []
   if (!includeAll) return current
