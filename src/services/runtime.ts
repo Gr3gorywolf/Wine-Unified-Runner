@@ -23,14 +23,19 @@ import { readJson, writeJson } from '../utils/json.js'
 import { runtimeMetadataFile } from '../utils/filesystem.js'
 import { parseWithSchema } from '../utils/validation.js'
 
-function selectAsset(source: RuntimeSource, release: GithubRelease): GithubAsset | undefined {
+function selectAssets(source: RuntimeSource, release: GithubRelease): GithubAsset[] {
   if (runtimeSources[source].stagingOnly) {
-    return release.assets.find((asset) => asset.name.toLowerCase().includes('staging') && isArchiveAsset(asset.name))
+    return release.assets.filter((asset) => asset.name.toLowerCase().includes('staging') && isArchiveAsset(asset.name))
   }
-  return release.assets.find((asset) => assetMatchesArchitecture(source, asset.name))
+  if (source === 'proton-archive') {
+    return release.assets.filter((asset) => /^proton-.+\.tar\.(gz|xz|zst)$/iu.test(asset.name))
+  }
+  const asset = release.assets.find((candidate) => assetMatchesArchitecture(source, candidate.name))
+  return asset ? [asset] : []
 }
 
-function releaseName(source: RuntimeSource, tag: string): string {
+function releaseName(source: RuntimeSource, tag: string, asset: GithubAsset): string {
+  if (source === 'proton-archive') return asset.name.replace(/\.tar\.(gz|xz|zst)$/iu, '')
   return source.startsWith('wine-') ? `Wine-${tag}` : tag
 }
 
@@ -41,25 +46,23 @@ export async function listReleases(source?: RuntimeSource, limit = 30, includeAl
     selected.map(async (info) => {
       const data = await fetchJson<GithubRelease[]>(`${info.apiUrl}?per_page=${Math.min(Math.max(limit, 1), 100)}`)
       const entries = data.flatMap((item) => {
-        const asset = selectAsset(info.id, item)
-        if (!asset) return []
-        const checksum =
-          info.id === 'ge-proton' || info.id === 'proton-cachyos'
-            ? item.assets.find(
-                (candidate) => candidate.name === asset.name.replace(/\.tar\.(gz|xz|zst)$/i, '.sha512sum')
-              )?.browser_download_url
-            : item.assets.find((candidate) => /sha512sum$/i.test(candidate.name))?.browser_download_url
-        return [
-          {
+        return selectAssets(info.id, item).map((asset) => {
+          const checksum =
+            info.id === 'ge-proton' || info.id === 'proton-cachyos'
+              ? item.assets.find(
+                  (candidate) => candidate.name === asset.name.replace(/\.tar\.(gz|xz|zst)$/i, '.sha512sum')
+                )?.browser_download_url
+              : item.assets.find((candidate) => /sha512sum$/i.test(candidate.name))?.browser_download_url
+          return {
             source: info.id,
-            version: releaseName(info.id, item.tag_name),
+            version: releaseName(info.id, item.tag_name, asset),
             date: item.published_at.slice(0, 10),
             download: asset.browser_download_url,
             size: asset.size,
             checksum,
             notesUrl: item.html_url
           } satisfies RuntimeRelease
-        ]
+        })
       })
       const latest = entries[0]
       return latest ? [{ ...latest, version: 'latest', latest: true }, ...entries] : []

@@ -1,6 +1,7 @@
 export type RuntimeSource =
   | 'ge-proton'
   | 'proton'
+  | 'proton-archive'
   | 'proton-cachyos'
   | 'wine-lutris'
   | 'wine-crossover'

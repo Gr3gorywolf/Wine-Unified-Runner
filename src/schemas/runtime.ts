@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const runtimeSourceSchema = z.enum([
   'ge-proton',
   'proton',
+  'proton-archive',
   'proton-cachyos',
   'wine-lutris',
   'wine-crossover',

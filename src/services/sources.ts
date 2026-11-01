@@ -3,6 +3,7 @@ import type { ComponentName, ComponentRecommendation, RuntimeSource, RuntimeSour
 const runtimeSourceNames = new Set<RuntimeSource>([
   'ge-proton',
   'proton',
+  'proton-archive',
   'proton-cachyos',
   'wine-lutris',
   'wine-crossover',
@@ -23,6 +24,14 @@ export const runtimeSources: Record<RuntimeSource, RuntimeSourceInfo> = {
     id: 'proton',
     label: 'Valve Proton',
     apiUrl: 'https://api.github.com/repos/ValveSoftware/Proton/releases',
+    kind: 'proton',
+    platforms: ['linux'],
+    ignoredComponents: ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxvk-macos', 'dxmt']
+  },
+  'proton-archive': {
+    id: 'proton-archive',
+    label: 'Proton Archive (Kron4ek)',
+    apiUrl: 'https://api.github.com/repos/Kron4ek/proton-archive/releases',
     kind: 'proton',
     platforms: ['linux'],
     ignoredComponents: ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxvk-macos', 'dxmt']
@@ -53,7 +62,7 @@ export const runtimeSources: Record<RuntimeSource, RuntimeSourceInfo> = {
   },
   'wine-staging-macos': {
     id: 'wine-staging-macos',
-    label: 'Wine-Staging macOS',
+    label: 'Wine-Staging macOS (Gcenx)',
     apiUrl: 'https://api.github.com/repos/Gcenx/macOS_Wine_builds/releases',
     kind: 'wine',
     platforms: ['darwin'],

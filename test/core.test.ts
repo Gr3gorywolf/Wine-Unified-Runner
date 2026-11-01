@@ -130,6 +130,8 @@ test('runtime component exclusions are declared by runtime metadata', () => {
     'dxvk-macos',
     'dxmt'
   ])
+  assert.equal(runtimeSources['proton-archive'].kind, 'proton')
+  assert.equal(ignoresComponent('proton-archive', 'dxvk'), true)
 })
 
 test('settings path parsing preserves JSON values', () => {

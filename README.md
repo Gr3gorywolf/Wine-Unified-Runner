@@ -121,12 +121,14 @@ wur runtime install
 
 # Install or remove a specific runtime.
 wur runtime install ge-proton latest
+wur runtime install proton-archive proton-10.0-4
 wur runtime remove game-porting-toolkit latest
 
 ```
 
 There is no separate Proton command: Proton is one runtime kind among the sources managed by `wur runtime`.
 Each listed runtime also exposes `ignoredComponents`: components WUR will not inject or override for that runtime. For example, Wine-CrossOver owns its graphics stack, so its DXVK override is ignored.
+`proton-archive` exposes the individual official Steam Proton builds archived by [Kron4ek](https://github.com/Kron4ek/proton-archive), including historical patch builds.
 
 ## Manage components
 
