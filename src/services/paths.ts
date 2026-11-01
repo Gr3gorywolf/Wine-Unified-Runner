@@ -41,6 +41,7 @@ export function getPaths(): Paths {
     containers: join(root, 'containers'),
     runtimes: join(root, 'runtimes'),
     components: join(root, 'components'),
+    redist: join(root, 'redist'),
     downloads: join(root, 'downloads'),
     appConfig: join(root, 'config', 'config.json'),
     // The template remains beside the executable; the editable, platform-aware
@@ -58,6 +59,7 @@ export async function ensurePaths(paths: Paths): Promise<void> {
     mkdir(paths.containers, { recursive: true }),
     mkdir(paths.runtimes, { recursive: true }),
     mkdir(paths.components, { recursive: true }),
+    mkdir(paths.redist, { recursive: true }),
     mkdir(paths.downloads, { recursive: true })
   ])
 }

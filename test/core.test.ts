@@ -39,6 +39,7 @@ function portablePaths(root: string): Paths {
     containers: join(root, 'containers'),
     runtimes: join(root, 'runtimes'),
     components: join(root, 'components'),
+    redist: join(root, 'redist'),
     downloads: join(root, 'downloads'),
     appConfig: join(root, 'config', 'config.json'),
     defaults: join(root, 'config', 'defaults.json'),
@@ -110,6 +111,13 @@ test('container exec documents built-in tools and graphics diagnostics', async (
   assert.match(result.stdout, /explorer\.exe/)
   assert.match(result.stdout, /dxdiag\.exe/)
   assert.match(result.stdout, /OpenGL or Vulkan diagnostic/)
+})
+
+test('container install-redist documents its interactive upstream installer', async () => {
+  const cli = resolve(process.cwd(), 'dist', 'src', 'cli.js')
+  const result = await execFileAsync(process.execPath, [cli, 'container', 'install-redist', '--help'])
+  assert.match(result.stdout, /cached Windows redistributables/)
+  assert.match(result.stdout, /reboot prompt/)
 })
 
 test('runtime component exclusions are declared by runtime metadata', () => {

@@ -13,6 +13,7 @@ import {
 } from '../services/containers.js'
 import { runRuntime, stopWineServer } from '../services/launch.js'
 import { getPaths } from '../services/paths.js'
+import { installContainerRedists } from '../services/redist.js'
 import type {
   BuildOptions,
   ContainerConfigureOptions,
@@ -122,6 +123,19 @@ export async function removeContainerConfiguration(
   json: boolean
 ): Promise<void> {
   output({ removed: true, ...(await removeContainer(requireContainerName(nameArgument, options), getPaths())) }, json)
+}
+
+/** Downloads or reuses the All-in-One Runtime Installer and runs it under Wine. */
+export async function installContainerRedistributables(
+  nameArgument: string | undefined,
+  options: ContainerNameOptions,
+  json: boolean
+): Promise<void> {
+  const paths = getPaths()
+  const container = await loadContainer(requireContainerName(nameArgument, options), paths)
+  const result = await installContainerRedists(container, paths)
+  output(result, json)
+  if (result.execution.code !== 0) process.exitCode = result.execution.code || 1
 }
 
 /** Executes a Windows executable or Wine built-in with the container's complete runtime environment. */

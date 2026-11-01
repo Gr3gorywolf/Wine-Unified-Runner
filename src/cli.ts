@@ -6,6 +6,7 @@ import {
   configureContainer,
   createContainerConfiguration,
   executeInContainer,
+  installContainerRedistributables,
   installRecommended,
   installSelectedComponent,
   installSelectedRuntime,
@@ -66,7 +67,9 @@ function createProgram(): Command {
   })
   program.addHelpText(
     'after',
-    colors.dim('\nState stays beside WUR: user/, runtimes/, components/, containers/, downloads/, and config/.')
+    colors.dim(
+      '\nState stays beside WUR: user/, runtimes/, components/, redist/, containers/, downloads/, and config/.'
+    )
   )
   program.hook('preAction', (_command, actionCommand) => {
     const options = actionCommand.optsWithGlobals<GlobalOptions>()
@@ -218,6 +221,20 @@ function createProgram(): Command {
     .option('--name <name>', 'container name')
     .action((name: string | undefined, options: ContainerNameOptions, command: Command) =>
       removeContainerConfiguration(name, options, commandUsesJson(command))
+    )
+  container
+    .command('install-redist')
+    .description('download or reuse cached Windows redistributables, then run their interactive installer')
+    .argument('[name]', 'container name')
+    .option('--name <name>', 'container name')
+    .addHelpText(
+      'after',
+      colors.dim(
+        '\nUses BloopSmasher/All-in-One-Runtime-Installer. The upstream AutoAdmin batch is interactive and includes a reboot prompt; choose N to defer it.'
+      )
+    )
+    .action((name: string | undefined, options: ContainerNameOptions, command: Command) =>
+      installContainerRedistributables(name, options, commandUsesJson(command))
     )
   container
     .command('exec')

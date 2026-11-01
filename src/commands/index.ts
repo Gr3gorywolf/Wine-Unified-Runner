@@ -8,6 +8,7 @@ export {
   configureContainer,
   createContainerConfiguration,
   executeInContainer,
+  installContainerRedistributables,
   listContainerConfigurations,
   removeContainerConfiguration,
   selectDefaultContainer,

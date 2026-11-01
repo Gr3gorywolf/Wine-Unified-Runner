@@ -4,6 +4,7 @@ export interface Paths {
   containers: string
   runtimes: string
   components: string
+  redist: string
   downloads: string
   appConfig: string
   defaults: string

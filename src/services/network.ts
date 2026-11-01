@@ -125,6 +125,27 @@ export async function extractArchive(
   })
 }
 
+/** Extracts a ZIP archive with the platform's standard unzip implementation. */
+export async function extractZip(archive: string, destination: string, quiet = false): Promise<void> {
+  await mkdir(destination, { recursive: true })
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('unzip', [quiet ? '-q' : '', archive, '-d', destination].filter(Boolean), {
+      stdio: quiet ? ['ignore', 'ignore', 'pipe'] : ['ignore', 'inherit', 'inherit']
+    })
+    let stderr = ''
+    if (quiet)
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString()
+      })
+    child.once('error', (error) => reject(new Error(`Could not start unzip: ${error.message}`)))
+    child.once('close', (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`unzip exited with status ${code}${stderr.trim() ? `: ${stderr.trim()}` : ''}`))
+    )
+  })
+}
+
 export async function sha512File(file: string): Promise<string> {
   return createHash('sha512')
     .update(await readFile(file))

@@ -164,6 +164,14 @@ wur container configure --name cyberpunk --set launch.enableHdr=true
 wur container remove --name cyberpunk
 ```
 
+### Install Windows redistributables
+
+```sh
+wur container install-redist --name cyberpunk
+```
+
+WUR checks the latest [All-in-One Runtime Installer release](https://github.com/BloopSmasher/All-in-One-Runtime-Installer/releases) on every run. A matching extracted release is reused from `redist/`; otherwise its ZIP is downloaded to `downloads/`, extracted there, the ZIP is removed, and the validated files are cached under `redist/<version>/`. It then runs the upstream interactive `All in One Runtime Installer (AutoAdmin).bat` inside the selected container. That script includes its own confirmation and reboot prompt; select **N** to defer the reboot.
+
 The runtime declaration is portable: it stores only `source` and `version`, never a path to a local runtime installation. WUR finds or installs that runtime when the container is built or launched.
 
 ### Run tools inside a container

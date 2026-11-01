@@ -39,6 +39,15 @@ export function runtimeMetadataFile(path: string): string {
   return join(path, 'runtime.json')
 }
 
+/** Metadata that records which All-in-One Runtime Installer release is cached. */
+export function redistMetadataFile(paths: Paths): string {
+  return join(paths.redist, 'cache.json')
+}
+
+export function redistVersionDirectory(paths: Paths, version: string): string {
+  return join(paths.redist, version.replace(/[^A-Za-z0-9._-]+/g, '_'))
+}
+
 /** Finds the first directory with one of the requested names below a root. */
 export async function findDirectory(root: string, names: string[], maxDepth = 4): Promise<string | undefined> {
   const queue: Array<{ path: string; depth: number }> = [{ path: root, depth: 0 }]
@@ -54,6 +63,27 @@ export async function findDirectory(root: string, names: string[], maxDepth = 4)
     for (const entry of entries) {
       const child = join(current.path, entry.name)
       if (entry.isDirectory() && names.includes(entry.name)) return child
+      if (entry.isDirectory()) queue.push({ path: child, depth: current.depth + 1 })
+    }
+  }
+  return undefined
+}
+
+/** Finds a named regular file below an archive extraction root. */
+export async function findFile(root: string, name: string, maxDepth = 4): Promise<string | undefined> {
+  const queue: Array<{ path: string; depth: number }> = [{ path: root, depth: 0 }]
+  while (queue.length) {
+    const current = queue.shift()!
+    if (current.depth > maxDepth) continue
+    let entries
+    try {
+      entries = await readdir(current.path, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      const child = join(current.path, entry.name)
+      if (entry.name === name && entry.isFile()) return child
       if (entry.isDirectory()) queue.push({ path: child, depth: current.depth + 1 })
     }
   }
