@@ -169,6 +169,7 @@ async function main() {
     bundle: true,
     platform: 'node',
     format: 'cjs',
+    mainFields: ['module', 'main'],
     target: 'node22',
     sourcemap: false,
     minifySyntax: true,

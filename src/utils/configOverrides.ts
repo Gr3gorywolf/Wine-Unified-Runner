@@ -9,28 +9,18 @@ export const GAME_OVERRIDE_FILE = 'wur-overrides.jsonc'
 
 type JsonPrimitive = string | number | boolean | null
 
-export interface GameOverrideAssignment {
+interface GameOverrideAssignment {
   path: string[]
   value?: JsonPrimitive
-  remove: boolean
 }
 
-interface DynamicOverridePath {
-  path: string[]
-  schema: z.ZodRecord
-}
+const overridePaths = collectOverridePaths(gameOverridesSchema)
 
-const { staticPaths: staticOverridePaths, dynamicPaths: dynamicOverridePaths } = buildOverridePaths(gameOverridesSchema)
-
-/** Parses the editable JSONC sidecar using the same schema as runtime overrides. */
-export function parseGameOverrides(contents: string, _origin?: string): GameOverrides {
-  const errors: ParseError[] = []
-  const raw = parse(contents, errors, { allowTrailingComma: true, disallowComments: false })
-  if (errors.length) return {}
-  const parsed = gameOverridesSchema.safeParse(raw)
+/** Parses the editable JSONC sidecar with the game override schema. */
+export function parseGameOverrides(contents: string): GameOverrides {
+  const parsed = gameOverridesSchema.safeParse(parseJsonc(contents))
   if (!parsed.success) return {}
-  const compact = compactEmptyObjects(parsed.data)
-  return compact && typeof compact === 'object' && !Array.isArray(compact) ? (compact as GameOverrides) : {}
+  return (compactEmptyObjects(parsed.data) as GameOverrides | undefined) ?? {}
 }
 
 /** Validates a complete --val path against gameOverridesSchema. */
@@ -38,36 +28,32 @@ export function parseGameOverrideAssignment(expression: string): GameOverrideAss
   const { path: key, value } = parseSetExpression(expression)
   const path = parseDotPath(key)
   if (!isOverridePath(path)) throw new Error(`Unknown override key "${key}".`)
-  if (expression.slice(expression.indexOf('=') + 1) === '') return { path, remove: true }
+  if (expression.indexOf('=') === expression.length - 1) return { path }
   if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean' && value !== null) {
     throw new Error(`Override value for "${key}" must be a string, number, boolean, or null.`)
   }
 
   const normalized = normalizedValue(path, value)
   if (normalized === undefined) throw new Error(`Invalid override "${expression}".`)
-  return { path, value: normalized, remove: false }
+  return { path, value: normalized }
 }
 
-function buildOverridePaths(schema: z.ZodType): {
-  staticPaths: Set<string>
-  dynamicPaths: DynamicOverridePath[]
-} {
-  const staticPaths = new Set<string>()
-  const dynamicPaths: DynamicOverridePath[] = []
+function collectOverridePaths(schema: z.ZodType): Set<string> {
+  const paths = new Set<string>()
 
   function visit(node: z.ZodType, path: string[]): void {
     const unwrapped = unwrap(node)
     if (unwrapped instanceof z.ZodObject) {
       for (const [key, child] of Object.entries(unwrapped.shape)) visit(child, [...path, key])
     } else if (unwrapped instanceof z.ZodRecord) {
-      dynamicPaths.push({ path, schema: unwrapped })
+      paths.add([...path, '*'].join('.'))
     } else {
-      staticPaths.add(path.join('.'))
+      paths.add(path.join('.'))
     }
   }
 
   visit(schema, [])
-  return { staticPaths, dynamicPaths }
+  return paths
 }
 
 function unwrap(schema: z.ZodType): z.ZodType {
@@ -79,30 +65,20 @@ function unwrap(schema: z.ZodType): z.ZodType {
 }
 
 function isOverridePath(path: string[]): boolean {
-  if (staticOverridePaths.has(path.join('.'))) return true
-  const parent = path.slice(0, -1)
-  const key = path.at(-1)
-  if (!key) return false
-  return dynamicOverridePaths.some(
-    (dynamic) => lodash.isEqual(dynamic.path, parent) && recordAcceptsKey(dynamic.schema, key)
-  )
-}
-
-function recordAcceptsKey(schema: z.ZodRecord, key: string): boolean {
-  const parsed = schema.safeParse({ [key]: '__wur_key_probe__' })
-  return parsed.success && Object.hasOwn(parsed.data, key)
+  const exactPath = path.join('.')
+  const recordPath = [...path.slice(0, -1), '*'].join('.')
+  return overridePaths.has(exactPath) || overridePaths.has(recordPath)
 }
 
 /** Applies JSONC edits without discarding comments or unrelated formatting. */
 export function applyGameOverrideAssignments(contents: string, assignments: GameOverrideAssignment[]): string {
   const lineEnding = contents.includes('\r\n') ? '\r\n' : '\n'
-  return assignments.reduce((updated, assignment) => {
-    const edits = modify(updated, assignment.path, assignment.remove ? undefined : assignment.value, {
-      formattingOptions: { insertSpaces: true, tabSize: 2, eol: lineEnding }
-    })
-    const edited = applyEdits(updated, edits)
-    return assignment.remove ? removeEmptyParents(edited, assignment.path, lineEnding) : edited
-  }, contents)
+  let updated = contents
+  for (const { path, value } of assignments) {
+    updated = editJsonc(updated, path, value, lineEnding)
+    if (value === undefined) updated = removeEmptyParents(updated, path, lineEnding)
+  }
+  return updated
 }
 
 function normalizedValue(path: string[], value: JsonPrimitive): JsonPrimitive | undefined {
@@ -117,37 +93,44 @@ function valueAtPath(path: string[], value: JsonPrimitive): Record<string, unkno
   return result
 }
 
+function editJsonc(contents: string, path: string[], value: JsonPrimitive | undefined, lineEnding: string): string {
+  const edits = modify(contents, path, value, {
+    formattingOptions: { insertSpaces: true, tabSize: 2, eol: lineEnding }
+  })
+  return applyEdits(contents, edits)
+}
+
 function removeEmptyParents(contents: string, path: string[], lineEnding: string): string {
   let updated = contents
   for (let depth = path.length - 1; depth > 0; depth--) {
-    const errors: ParseError[] = []
-    const raw = parse(updated, errors, { allowTrailingComma: true, disallowComments: false })
-    const parent = errors.length ? undefined : valueAt(raw, path.slice(0, depth))
+    const parentPath = path.slice(0, depth)
+    const parent = lodash.get(parseJsonc(updated), parentPath)
     if (!isEmptyObject(parent)) break
-    updated = applyEdits(
-      updated,
-      modify(updated, path.slice(0, depth), undefined, {
-        formattingOptions: { insertSpaces: true, tabSize: 2, eol: lineEnding }
-      })
-    )
+    updated = editJsonc(updated, parentPath, undefined, lineEnding)
   }
   return updated
 }
 
-function valueAt(value: unknown, path: string[]): unknown {
-  return lodash.get(value, path)
+function parseJsonc(contents: string): unknown {
+  const errors: ParseError[] = []
+  const value = parse(contents, errors, { allowTrailingComma: true, disallowComments: false })
+  return errors.length ? undefined : value
 }
 
-function isEmptyObject(value: unknown): value is Record<string, never> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 0
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isEmptyObject(value: unknown): boolean {
+  return isJsonObject(value) && Object.keys(value).length === 0
 }
 
 function compactEmptyObjects(value: unknown): unknown {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value
-  const compact = Object.fromEntries(
-    Object.entries(value)
-      .map(([key, child]) => [key, compactEmptyObjects(child)] as const)
-      .filter(([, child]) => child !== undefined)
-  )
+  if (!isJsonObject(value)) return value
+  const compact: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(value)) {
+    const compactChild = compactEmptyObjects(child)
+    if (compactChild !== undefined) compact[key] = compactChild
+  }
   return Object.keys(compact).length ? compact : undefined
 }

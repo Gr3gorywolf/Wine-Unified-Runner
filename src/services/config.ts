@@ -14,8 +14,7 @@ import {
   applyGameOverrideAssignments,
   GAME_OVERRIDE_FILE,
   parseGameOverrideAssignment,
-  parseGameOverrides,
-  type GameOverrideAssignment
+  parseGameOverrides
 } from '../utils/configOverrides.js'
 import {
   assertContainerName,
@@ -179,7 +178,7 @@ export async function setGameOverrides(
   expressions: string[],
   paths = getPaths()
 ): Promise<GameOverrides> {
-  const assignments: GameOverrideAssignment[] = expressions.map(parseGameOverrideAssignment)
+  const assignments = expressions.map(parseGameOverrideAssignment)
   const { file } = await loadGameOverrides(executable, paths)
   if (assignments.length) {
     const contents = await readFile(file, 'utf8')
@@ -191,8 +190,6 @@ export async function setGameOverrides(
 /** Applies non-selection overrides to an in-memory container for one launch. */
 export function applyGameOverrides(container: ContainerConfig, overrides: GameOverrides): ContainerConfig {
   const result = structuredClone(container)
-  if (overrides.runtime?.source !== undefined) result.runtime.source = overrides.runtime.source
-  if (overrides.runtime?.version !== undefined) result.runtime.version = overrides.runtime.version
   for (const [key, selection] of Object.entries(overrides.components || {}) as Array<
     [keyof ContainerComponents, Partial<ComponentSelection>]
   >) {
@@ -209,7 +206,7 @@ export function applyGameOverrides(container: ContainerConfig, overrides: GameOv
 }
 
 export function hasGameLaunchOverrides(overrides: GameOverrides): boolean {
-  return Boolean(overrides.runtime || overrides.components || overrides.launch)
+  return Boolean(overrides.components || overrides.launch)
 }
 
 export async function loadContainer(name: string, paths = getPaths()): Promise<ContainerConfig> {

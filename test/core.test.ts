@@ -158,7 +158,6 @@ test('per-game JSONC overrides are created from the template and apply without c
       `{
   // template comments are ignored by the JSONC parser
   "containerName": "sidecar-container",
-  "runtime": { "version": "custom-runtime" },
   "components": {
     "dxvk": { "version": "2.4" },
     "dxvkNvapi": { "enabled": true }
@@ -175,7 +174,6 @@ test('per-game JSONC overrides are created from the template and apply without c
     const loaded = await loadGameOverrides(executable, paths)
     assert.equal(loaded.file, sidecar)
     assert.equal(loaded.overrides.containerName, 'sidecar-container')
-    assert.equal(loaded.overrides.runtime?.version, 'custom-runtime')
     assert.equal(loaded.overrides.components?.dxvk?.version, '2.4')
     assert.equal(loaded.overrides.components?.dxvkNvapi?.enabled, true)
     assert.equal(loaded.overrides.launch?.enableHdr, true)
@@ -184,13 +182,11 @@ test('per-game JSONC overrides are created from the template and apply without c
 
     const original = newContainer('base', testDefaults, paths)
     const effective = applyGameOverrides(original, loaded.overrides)
-    assert.equal(effective.runtime.version, 'custom-runtime')
     assert.equal(effective.components.dxvk.version, '2.4')
     assert.equal(effective.components.dxvkNvapi.enabled, true)
     assert.equal(effective.launch.enableHdr, true)
     assert.equal(effective.launch.dxvkFrameRate, 60)
     assert.equal(effective.launch.environment.DXVK_ASYNC, '1')
-    assert.equal(original.runtime.version, 'latest')
     assert.equal(original.launch.enableHdr, false)
 
     await rm(sidecar)
@@ -235,8 +231,7 @@ test('override CLI shows no sidecar as an empty object and set creates and updat
       '--val',
       'containerName=example-container',
       '--val',
-      'runtime.version=custom-runtime',
-      '--val=components.dxvk.enabled=true',
+      'components.dxvk.enabled=true',
       '--val',
       'launch.enableHdr=true',
       '--val',
@@ -244,7 +239,6 @@ test('override CLI shows no sidecar as an empty object and set creates and updat
     ])
     assert.deepEqual(JSON.parse(updated.stdout), {
       containerName: 'example-container',
-      runtime: { version: 'custom-runtime' },
       components: { dxvk: { enabled: true } },
       launch: { enableHdr: true, environment: { DXVK_ASYNC: '1' } }
     })
@@ -266,7 +260,6 @@ test('override CLI shows no sidecar as an empty object and set creates and updat
     ])
     assert.deepEqual(JSON.parse(removed.stdout), {
       containerName: 'example-container',
-      runtime: { version: 'custom-runtime' },
       components: { dxvk: { enabled: true } }
     })
 
@@ -317,6 +310,7 @@ test('setGameOverrides validates values before creating a sidecar', async () => 
     assert.deepEqual(await showGameOverrides(executable), {})
     await assert.rejects(setGameOverrides(executable, ['launch.enableHdr=invalid'], paths), /Invalid override/)
     await assert.rejects(setGameOverrides(executable, ['enableHdr=true'], paths), /Unknown override key/)
+    await assert.rejects(setGameOverrides(executable, ['runtime.version=latest'], paths), /Unknown override key/)
     assert.equal(existsSync(sidecar), false)
   } finally {
     await rm(root, { recursive: true, force: true })

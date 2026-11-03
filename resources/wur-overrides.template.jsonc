@@ -10,12 +10,6 @@
   //   3. All other properties apply in both cases.
 
   // "containerName": "my-container",
-
-  // "runtime": {
-  //   "source": "wine-crossover",
-  //   "version": "latest"
-  // },
-
   // "components": {
   //   "dxvk": { "enabled": true, "version": "latest" },
   //   "dxvkNvapi": { "enabled": false, "version": "latest" },

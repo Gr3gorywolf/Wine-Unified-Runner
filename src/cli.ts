@@ -35,7 +35,6 @@ import type {
   ContainerNameOptions,
   ForceOptions,
   GlobalOptions,
-  OverrideSetOptions,
   RecommendedOptions,
   RunOptions,
   RuntimeListOptions,
@@ -45,6 +44,7 @@ import { collectOption, normalizeExecutableFallback, positiveInteger } from './u
 import { commandUsesJson } from './utils/cli.js'
 import { isExecutableFallback } from './utils/executables.js'
 import { colors } from './utils/output.js'
+import { OverrideSetOptions } from './types/cli.js'
 
 let jsonOutput = false
 
@@ -291,7 +291,7 @@ function createProgram(): Command {
     .option('--val <path=value>', 'set an override value', collectOption, [])
     .addHelpText(
       'after',
-      `\n${colors.dim('Use the complete JSONC path from the template. For example: containerName, runtime.version, components.dxvk.enabled, launch.enableHdr, launch.environment.DXVK_ASYNC.')}`
+      `\n${colors.dim('Use the complete JSONC path from the template. For example: containerName, components.dxvk.enabled, launch.enableHdr, launch.environment.DXVK_ASYNC.')}`
     )
     .action((executable: string, options: OverrideSetOptions) => setExecutableOverrides(executable, options.val))
   override

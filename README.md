@@ -103,7 +103,7 @@ On the first launch, or with `wur override set`, WUR writes `wur-overrides.jsonc
 }
 ```
 
-The precedence is intentional: `wur run GAME.exe --container another-container` ignores only `containerName`; the runtime, component, launch, and environment entries still apply. Without `--container`, `containerName` selects the container. Overrides are in-memory for that launch and never rewrite `container.json`.
+The precedence is intentional: `wur run GAME.exe --container another-container` ignores only `containerName`; the component, launch, and environment entries still apply. Without `--container`, `containerName` selects the container. Overrides are in-memory for that launch and never rewrite `container.json`.
 
 Inspect or edit the sidecar without opening it manually:
 
@@ -118,7 +118,6 @@ wur override set /games/Celeste/Celeste.exe
 # --val can appear more than once. Always use its complete JSONC path.
 wur override set /games/Celeste/Celeste.exe \
   --val containerName=celeste \
-  --val runtime.version=latest \
   --val components.dxvk.enabled=true \
   --val launch.enableHdr=true \
   --val launch.environment.DXVK_ASYNC=1

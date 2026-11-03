@@ -11,6 +11,7 @@ export const componentNameSchema = z.enum([
   'umu'
 ])
 export const componentSelectionSchema = z.object({ enabled: z.boolean(), version: z.string().min(1) }).strict()
+export const partialComponentSelectionSchema = componentSelectionSchema.partial()
 export const containerComponentsSchema = z
   .object({
     dxvk: componentSelectionSchema,
@@ -20,6 +21,13 @@ export const containerComponentsSchema = z
     battleyeRuntime: componentSelectionSchema
   })
   .strict()
+type PartialContainerComponentShape = {
+  [Name in keyof typeof containerComponentsSchema.shape]: z.ZodOptional<typeof partialComponentSelectionSchema>
+}
+const partialContainerComponentShape = Object.fromEntries(
+  Object.keys(containerComponentsSchema.shape).map((name) => [name, partialComponentSelectionSchema.optional()])
+) as PartialContainerComponentShape
+export const partialContainerComponentsSchema = z.object(partialContainerComponentShape).strict()
 
 export const componentReleaseSchema = z
   .object({

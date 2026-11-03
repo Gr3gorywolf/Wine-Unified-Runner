@@ -40,7 +40,6 @@ export interface AppConfig {
 
 export interface GameOverrides {
   containerName?: string
-  runtime?: Partial<ContainerRuntimeRef>
   components?: Partial<{ [Key in keyof ContainerComponents]: Partial<ComponentSelection> }>
   launch?: Partial<Omit<LaunchOptions, 'environment'>> & { environment?: Record<string, string> }
 }
