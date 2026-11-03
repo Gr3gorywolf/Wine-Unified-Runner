@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir, readFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { ensurePaths, getPaths } from './paths.js'
 import { isRuntimeSource } from './sources.js'
@@ -10,7 +10,13 @@ import {
   containerRuntimeRefSchema,
   defaultsFileSchema
 } from '../schemas/index.js'
-import { GAME_OVERRIDE_FILE, overrideLaunchBooleanKeys, parseGameOverrides } from '../utils/configOverrides.js'
+import {
+  applyGameOverrideAssignments,
+  GAME_OVERRIDE_FILE,
+  parseGameOverrideAssignment,
+  parseGameOverrides,
+  type GameOverrideAssignment
+} from '../utils/configOverrides.js'
 import {
   assertContainerName,
   containerDirectory,
@@ -149,6 +155,39 @@ export async function loadGameOverrides(
   return { file, overrides: parseGameOverrides(await readFile(file, 'utf8')) }
 }
 
+/** Reads an existing editable sidecar without creating one for the executable. */
+export async function showGameOverrides(executable: string): Promise<GameOverrides> {
+  const file = gameOverrideFile(executable)
+  if (!existsSync(file)) return {}
+  return parseGameOverrides(await readFile(file, 'utf8'))
+}
+
+/** Deletes only the editable sidecar for an executable, never its directory or executable. */
+export async function removeGameOverrides(executable: string): Promise<{ removed: boolean }> {
+  const file = gameOverrideFile(executable)
+  if (!existsSync(file)) return { removed: false }
+  await rm(file, { force: false })
+  return { removed: true }
+}
+
+/**
+ * Creates an executable's editable JSONC sidecar when needed, then applies each
+ * validated --val assignment without discarding the template's comments.
+ */
+export async function setGameOverrides(
+  executable: string,
+  expressions: string[],
+  paths = getPaths()
+): Promise<GameOverrides> {
+  const assignments: GameOverrideAssignment[] = expressions.map(parseGameOverrideAssignment)
+  const { file } = await loadGameOverrides(executable, paths)
+  if (assignments.length) {
+    const contents = await readFile(file, 'utf8')
+    await writeFile(file, applyGameOverrideAssignments(contents, assignments))
+  }
+  return await showGameOverrides(executable)
+}
+
 /** Applies non-selection overrides to an in-memory container for one launch. */
 export function applyGameOverrides(container: ContainerConfig, overrides: GameOverrides): ContainerConfig {
   const result = structuredClone(container)
@@ -161,14 +200,9 @@ export function applyGameOverrides(container: ContainerConfig, overrides: GameOv
     if (selection.version !== undefined) result.components[key].version = selection.version
   }
   if (overrides.launch) {
-    for (const key of overrideLaunchBooleanKeys) {
-      const value = overrides.launch[key]
-      if (value !== undefined) result.launch[key] = value
-    }
-    if (overrides.launch.dxvkFrameRate !== undefined) result.launch.dxvkFrameRate = overrides.launch.dxvkFrameRate
-    if (overrides.launch.fsrSharpness !== undefined) result.launch.fsrSharpness = overrides.launch.fsrSharpness
-    if (overrides.launch.environment)
-      result.launch.environment = { ...result.launch.environment, ...overrides.launch.environment }
+    const { environment, ...launch } = overrides.launch
+    Object.assign(result.launch, launch)
+    if (environment) result.launch.environment = { ...result.launch.environment, ...environment }
   }
   validateContainer(result, GAME_OVERRIDE_FILE)
   return result

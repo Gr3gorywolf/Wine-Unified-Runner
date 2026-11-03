@@ -5,6 +5,7 @@ import {
   buildContainers,
   configureContainer,
   createContainerConfiguration,
+  deleteExecutableOverrides,
   executeInContainer,
   installContainerRedistributables,
   installRecommended,
@@ -18,9 +19,11 @@ import {
   removeSelectedRuntime,
   runExecutable,
   selectDefaultContainer,
+  setExecutableOverrides,
   setDefaults,
   showContainerConfiguration,
   showDefaults,
+  showExecutableOverrides,
   suggestConfiguration
 } from './commands/index.js'
 import type {
@@ -32,6 +35,7 @@ import type {
   ContainerNameOptions,
   ForceOptions,
   GlobalOptions,
+  OverrideSetOptions,
   RecommendedOptions,
   RunOptions,
   RuntimeListOptions,
@@ -267,6 +271,35 @@ function createProgram(): Command {
     .action((options: SettingsOptions, command: Command) => setDefaults(options, commandUsesJson(command)))
 
   // #endregion Defaults commands
+
+  // #region Per-executable override commands
+
+  const override = program
+    .command('override [executable]')
+    .description('show or edit the wur-overrides.jsonc sidecar for a Windows executable')
+    .action(async (executable: string | undefined) => {
+      if (!executable) throw new Error('override requires a Windows executable. Use: wur override GAME.exe')
+      await showExecutableOverrides(executable)
+    })
+  override
+    .command('show <executable>')
+    .description('show an executable override as JSON without creating a sidecar')
+    .action((executable: string) => showExecutableOverrides(executable))
+  override
+    .command('set <executable>')
+    .description('create or update an executable override sidecar')
+    .option('--val <path=value>', 'set an override value', collectOption, [])
+    .addHelpText(
+      'after',
+      `\n${colors.dim('Use the complete JSONC path from the template. For example: containerName, runtime.version, components.dxvk.enabled, launch.enableHdr, launch.environment.DXVK_ASYNC.')}`
+    )
+    .action((executable: string, options: OverrideSetOptions) => setExecutableOverrides(executable, options.val))
+  override
+    .command('delete <executable>')
+    .description('delete an executable override sidecar')
+    .action((executable: string) => deleteExecutableOverrides(executable))
+
+  // #endregion Per-executable override commands
 
   // #region Run command
 

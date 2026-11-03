@@ -219,8 +219,8 @@ async function main() {
 
   await copyFile(join(projectRoot, 'resources', 'defaults.json'), join(releaseRoot, 'defaults.json'))
   await copyFile(
-    join(projectRoot, 'resources', 'wur-overrides.template.ini'),
-    join(releaseRoot, 'wur-overrides.template.ini')
+    join(projectRoot, 'resources', 'wur-overrides.template.jsonc'),
+    join(releaseRoot, 'wur-overrides.template.jsonc')
   )
   await run(outputBinary, ['--help'])
   console.log(`\nStandalone CLI created at ${outputBinary}`)

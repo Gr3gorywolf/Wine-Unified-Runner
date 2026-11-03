@@ -88,23 +88,47 @@ The shortcut accepts the standard Windows `PATHEXT` file types (`.com`, `.exe`, 
 
 ### Per-game overrides
 
-On the first launch, WUR writes `wur-overrides.ini` beside the Windows executable from the bundled `wur-overrides.template.ini`. The generated INI is fully commented and documents the available container selection, runtime, component, launch, and environment overrides. Delete the sidecar to recreate it from the current template.
+On the first launch, or with `wur override set`, WUR writes `wur-overrides.jsonc` beside the Windows executable from the bundled `wur-overrides.template.jsonc`. JSONC retains the familiar JSON types while allowing `//` comments; the generated template documents every available override. Delete the sidecar to recreate it from the current template.
 
-```ini
-[container]
-name = celeste
-
-[components]
-dxvk.version = 2.4
-
-[launch]
-showFps = true
-
-[environment]
-DXVK_ASYNC = 1
+```jsonc
+{
+  "containerName": "celeste",
+  "components": {
+    "dxvk": { "version": "2.4" }
+  },
+  "launch": {
+    "showFps": true,
+    "environment": { "DXVK_ASYNC": "1" }
+  }
+}
 ```
 
-The precedence is intentional: `wur run GAME.exe --container another-container` ignores only `[container] name`; the runtime, component, launch, and environment entries still apply. Without `--container`, `[container] name` selects the container. Overrides are in-memory for that launch and never rewrite `container.json`.
+The precedence is intentional: `wur run GAME.exe --container another-container` ignores only `containerName`; the runtime, component, launch, and environment entries still apply. Without `--container`, `containerName` selects the container. Overrides are in-memory for that launch and never rewrite `container.json`.
+
+Inspect or edit the sidecar without opening it manually:
+
+```sh
+# Both forms show the current overrides as JSON. No sidecar means {}.
+wur override /games/Celeste/Celeste.exe
+wur override show /games/Celeste/Celeste.exe
+
+# With no --val, create the commented template only.
+wur override set /games/Celeste/Celeste.exe
+
+# --val can appear more than once. Always use its complete JSONC path.
+wur override set /games/Celeste/Celeste.exe \
+  --val containerName=celeste \
+  --val runtime.version=latest \
+  --val components.dxvk.enabled=true \
+  --val launch.enableHdr=true \
+  --val launch.environment.DXVK_ASYNC=1
+```
+
+Use the complete property path from the template. WUR validates it against `gameOverridesSchema`; shortened aliases such as `enableHdr` or `version` are not accepted.
+
+To remove an override from the JSONC sidecar, pass an empty value: `wur override set GAME.exe --val launch.enableHdr=`.
+
+To delete the entire sidecar and start from a new template on the next `set` or launch, run `wur override delete GAME.exe`.
 
 ## Manage runtimes
 

@@ -25,6 +25,7 @@ export type {
   ContainerNameOptions,
   ForceOptions,
   GlobalOptions,
+  OverrideSetOptions,
   RecommendedOptions,
   RunOptions,
   RuntimeListOptions,

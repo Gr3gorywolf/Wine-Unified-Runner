@@ -15,6 +15,7 @@ export {
   showContainerConfiguration
 } from './containers.js'
 export { setDefaults, showDefaults } from './defaults.js'
+export { deleteExecutableOverrides, setExecutableOverrides, showExecutableOverrides } from './overrides.js'
 export { installRecommended, suggestConfiguration } from './recommendations.js'
 export { runExecutable } from './run.js'
 export {

@@ -50,6 +50,10 @@ export interface SettingsOptions {
   set: string[]
 }
 
+export interface OverrideSetOptions {
+  val: string[]
+}
+
 export interface ContainerConfigureOptions extends ContainerNameOptions, SettingsOptions {}
 
 export interface RunOptions {

@@ -1,4 +1,8 @@
+import lodash from 'lodash'
 import type { ContainerConfig } from '../types/index.js'
+
+const safeJsonPathSegment = /^[A-Za-z_][A-Za-z0-9_]*$/
+const forbiddenPathSegments = new Set(['__proto__', 'constructor', 'prototype'])
 
 export function parseJsonValue(value: string): unknown {
   try {
@@ -9,15 +13,19 @@ export function parseJsonValue(value: string): unknown {
 }
 
 export function setAtPath(target: Record<string, unknown>, path: string, value: unknown): void {
-  const parts = path.split('.')
-  if (!parts.every((part) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(part))) throw new Error(`Invalid JSON path "${path}".`)
-  let cursor: Record<string, unknown> = target
-  for (const part of parts.slice(0, -1)) {
-    const next = cursor[part]
-    if (typeof next !== 'object' || next === null || Array.isArray(next)) cursor[part] = {}
-    cursor = cursor[part] as Record<string, unknown>
+  lodash.set(target, parseDotPath(path), value)
+}
+
+export function parseDotPath(path: string): string[] {
+  const parts = lodash.toPath(path)
+  if (
+    !parts.length ||
+    parts.join('.') !== path ||
+    !parts.every((part) => safeJsonPathSegment.test(part) && !forbiddenPathSegments.has(part))
+  ) {
+    throw new Error(`Invalid JSON path "${path}".`)
   }
-  cursor[parts.at(-1)!] = value
+  return parts
 }
 
 export function parseSetExpression(expression: string): { path: string; value: unknown } {

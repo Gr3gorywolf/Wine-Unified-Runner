@@ -1,0 +1,44 @@
+{
+  // WUR per-game launch overrides.
+  // This file is created next to a Windows executable as wur-overrides.jsonc.
+  // Remove the leading // from a setting to enable it. These values apply only
+  // to this launch and never modify the selected container's container.json.
+  //
+  // Precedence:
+  //   1. `wur run GAME.exe --container NAME` ignores only containerName.
+  //   2. Without --container, containerName selects the container when enabled.
+  //   3. All other properties apply in both cases.
+
+  // "containerName": "my-container",
+
+  // "runtime": {
+  //   "source": "wine-crossover",
+  //   "version": "latest"
+  // },
+
+  // "components": {
+  //   "dxvk": { "enabled": true, "version": "latest" },
+  //   "dxvkNvapi": { "enabled": false, "version": "latest" },
+  //   "vkd3d": { "enabled": true, "version": "latest" },
+  //   "eacRuntime": { "enabled": false, "version": "latest" },
+  //   "battleyeRuntime": { "enabled": false, "version": "latest" }
+  // },
+
+  // "launch": {
+  //   "enableEsync": true,
+  //   "enableFsync": true,
+  //   "enableMsync": false,
+  //   "enableWayland": false,
+  //   "enableHdr": false,
+  //   "enableWow64": false,
+  //   "showFps": false,
+  //   "dxvkFrameRate": null,
+  //   "fsr": false,
+  //   "fsrSharpness": 2,
+  //   "verboseLogs": false,
+  //   "environment": {
+  //     "DXVK_ASYNC": "1",
+  //     "WINEDEBUG": "-all"
+  //   }
+  // }
+}

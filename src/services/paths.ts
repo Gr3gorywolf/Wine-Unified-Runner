@@ -29,11 +29,11 @@ export function getPaths(): Paths {
     ? resolve(moduleDirectory, 'resources', 'defaults.json')
     : resolve(moduleDirectory, '..', '..', 'resources', 'defaults.json')
   const installedOverrideTemplate = standaloneBinary
-    ? resolve(moduleDirectory, 'wur-overrides.template.ini')
-    : resolve(moduleDirectory, '..', '..', 'wur-overrides.template.ini')
+    ? resolve(moduleDirectory, 'wur-overrides.template.jsonc')
+    : resolve(moduleDirectory, '..', '..', 'wur-overrides.template.jsonc')
   const developmentOverrideTemplate = standaloneBinary
-    ? resolve(moduleDirectory, 'resources', 'wur-overrides.template.ini')
-    : resolve(moduleDirectory, '..', '..', 'resources', 'wur-overrides.template.ini')
+    ? resolve(moduleDirectory, 'resources', 'wur-overrides.template.jsonc')
+    : resolve(moduleDirectory, '..', '..', 'resources', 'wur-overrides.template.jsonc')
 
   return {
     root,

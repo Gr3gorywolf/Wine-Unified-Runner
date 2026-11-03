@@ -15,7 +15,9 @@ import {
   newContainer,
   parseRuntimeReference,
   parseSetExpression,
+  setGameOverrides,
   saveContainer,
+  showGameOverrides,
   setAtPath
 } from '../src/services/config.js'
 import { removeComponent } from '../src/services/components.js'
@@ -44,7 +46,7 @@ function portablePaths(root: string): Paths {
     appConfig: join(root, 'config', 'config.json'),
     defaults: join(root, 'config', 'defaults.json'),
     bundledDefaults: join(root, 'defaults.json'),
-    overrideTemplate: join(root, 'wur-overrides.template.ini')
+    overrideTemplate: join(root, 'wur-overrides.template.jsonc')
   }
 }
 
@@ -143,32 +145,42 @@ test('settings path parsing preserves JSON values', () => {
   assert.equal(runtimeId('ge-proton', 'GE-Proton10-1'), 'ge-proton--GE-Proton10-1')
 })
 
-test('per-game INI overrides are created from the template and apply without changing the container', async () => {
+test('per-game JSONC overrides are created from the template and apply without changing the container', async () => {
   const root = await mkdtemp(join(tmpdir(), 'wur-overrides-'))
   const paths = portablePaths(root)
   const executable = join(root, 'games', 'Example.exe')
-  const sidecar = join(root, 'games', 'wur-overrides.ini')
+  const sidecar = join(root, 'games', 'wur-overrides.jsonc')
   try {
     await mkdir(dirname(executable), { recursive: true })
     await writeFile(executable, '')
     await writeFile(
       paths.overrideTemplate,
-      `; template\n[container]\nname = sidecar-container\nignored = value\n[runtime]\nsource = not-a-runtime\nversion = custom-runtime\n[components]\ndxvk.version = 2.4\ndxvkNvapi.enabled = true\nvkd3d.enabled = perhaps\nunknown.enabled = true\n[launch]\nenableHdr = true\nenableFsync = perhaps\ndxvkFrameRate = 60\nfsrSharpness = not-a-number\nunknown = ignored\n[environment]\nDXVK_ASYNC = 1\ninvalid-name = ignored\n[unknown-section]\nvalue = ignored\n`
+      `{
+  // template comments are ignored by the JSONC parser
+  "containerName": "sidecar-container",
+  "runtime": { "version": "custom-runtime" },
+  "components": {
+    "dxvk": { "version": "2.4" },
+    "dxvkNvapi": { "enabled": true }
+  },
+  "launch": {
+    "enableHdr": true,
+    "dxvkFrameRate": 60,
+    "environment": { "DXVK_ASYNC": "1" }
+  }
+}
+`
     )
 
     const loaded = await loadGameOverrides(executable, paths)
     assert.equal(loaded.file, sidecar)
     assert.equal(loaded.overrides.containerName, 'sidecar-container')
     assert.equal(loaded.overrides.runtime?.version, 'custom-runtime')
-    assert.equal(loaded.overrides.runtime?.source, undefined)
     assert.equal(loaded.overrides.components?.dxvk?.version, '2.4')
     assert.equal(loaded.overrides.components?.dxvkNvapi?.enabled, true)
     assert.equal(loaded.overrides.launch?.enableHdr, true)
     assert.equal(loaded.overrides.launch?.dxvkFrameRate, 60)
-    assert.equal(loaded.overrides.launch?.enableFsync, undefined)
-    assert.equal(loaded.overrides.launch?.fsrSharpness, undefined)
     assert.equal(loaded.overrides.launch?.environment?.DXVK_ASYNC, '1')
-    assert.equal(loaded.overrides.launch?.environment?.['invalid-name'], undefined)
 
     const original = newContainer('base', testDefaults, paths)
     const effective = applyGameOverrides(original, loaded.overrides)
@@ -184,6 +196,128 @@ test('per-game INI overrides are created from the template and apply without cha
     await rm(sidecar)
     await loadGameOverrides(executable, paths)
     assert.equal(await readFile(sidecar, 'utf8'), await readFile(paths.overrideTemplate, 'utf8'))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('override CLI shows no sidecar as an empty object and set creates and updates its template', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'wur-override-cli-'))
+  const executable = join(root, 'games', 'Example.exe')
+  const sidecar = join(root, 'games', 'wur-overrides.jsonc')
+  const cli = resolve(process.cwd(), 'dist', 'src', 'cli.js')
+  try {
+    await mkdir(dirname(executable), { recursive: true })
+    await writeFile(executable, '')
+
+    const absent = await execFileAsync(process.execPath, [cli, '--home', join(root, 'home'), 'override', executable])
+    assert.deepEqual(JSON.parse(absent.stdout), {})
+    assert.equal(existsSync(sidecar), false)
+
+    const created = await execFileAsync(process.execPath, [
+      cli,
+      '--home',
+      join(root, 'home'),
+      'override',
+      'set',
+      executable
+    ])
+    assert.deepEqual(JSON.parse(created.stdout), {})
+    assert.equal(existsSync(sidecar), true)
+
+    const updated = await execFileAsync(process.execPath, [
+      cli,
+      '--home',
+      join(root, 'home'),
+      'override',
+      'set',
+      executable,
+      '--val',
+      'containerName=example-container',
+      '--val',
+      'runtime.version=custom-runtime',
+      '--val=components.dxvk.enabled=true',
+      '--val',
+      'launch.enableHdr=true',
+      '--val',
+      'launch.environment.DXVK_ASYNC=1'
+    ])
+    assert.deepEqual(JSON.parse(updated.stdout), {
+      containerName: 'example-container',
+      runtime: { version: 'custom-runtime' },
+      components: { dxvk: { enabled: true } },
+      launch: { enableHdr: true, environment: { DXVK_ASYNC: '1' } }
+    })
+    assert.match(await readFile(sidecar, 'utf8'), /\/\/ WUR per-game launch overrides/u)
+    assert.match(await readFile(sidecar, 'utf8'), /"containerName": "example-container"/u)
+    assert.match(await readFile(sidecar, 'utf8'), /"enabled": true/u)
+
+    const removed = await execFileAsync(process.execPath, [
+      cli,
+      '--home',
+      join(root, 'home'),
+      'override',
+      'set',
+      executable,
+      '--val',
+      'launch.enableHdr=',
+      '--val',
+      'launch.environment.DXVK_ASYNC='
+    ])
+    assert.deepEqual(JSON.parse(removed.stdout), {
+      containerName: 'example-container',
+      runtime: { version: 'custom-runtime' },
+      components: { dxvk: { enabled: true } }
+    })
+
+    const shown = await execFileAsync(process.execPath, [
+      cli,
+      '--home',
+      join(root, 'home'),
+      'override',
+      'show',
+      executable
+    ])
+    assert.deepEqual(JSON.parse(shown.stdout), JSON.parse(removed.stdout))
+
+    const deleted = await execFileAsync(process.execPath, [
+      cli,
+      '--home',
+      join(root, 'home'),
+      'override',
+      'delete',
+      executable
+    ])
+    assert.deepEqual(JSON.parse(deleted.stdout), { removed: true })
+    assert.equal(existsSync(sidecar), false)
+
+    const afterDelete = await execFileAsync(process.execPath, [
+      cli,
+      '--home',
+      join(root, 'home'),
+      'override',
+      executable
+    ])
+    assert.deepEqual(JSON.parse(afterDelete.stdout), {})
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('setGameOverrides validates values before creating a sidecar', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'wur-override-values-'))
+  const paths = portablePaths(root)
+  const executable = join(root, 'games', 'Example.exe')
+  const sidecar = join(root, 'games', 'wur-overrides.jsonc')
+  try {
+    await mkdir(dirname(executable), { recursive: true })
+    await writeFile(executable, '')
+    await writeFile(paths.overrideTemplate, '{\n  // template\n}\n')
+
+    assert.deepEqual(await showGameOverrides(executable), {})
+    await assert.rejects(setGameOverrides(executable, ['launch.enableHdr=invalid'], paths), /Invalid override/)
+    await assert.rejects(setGameOverrides(executable, ['enableHdr=true'], paths), /Unknown override key/)
+    assert.equal(existsSync(sidecar), false)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
