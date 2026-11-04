@@ -20,11 +20,7 @@ function firstCommandToken(argv: string[]): string | undefined {
       skipNext = false
       continue
     }
-    if (token === '--home') {
-      skipNext = true
-      continue
-    }
-    if (token === '--json' || token.startsWith('--home=')) continue
+    if (token === '--json') continue
     if (token.startsWith('-')) continue
     return token
   }

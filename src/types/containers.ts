@@ -36,6 +36,7 @@ export interface DefaultsFile {
 export interface AppConfig {
   schemaVersion: 1
   defaultContainer?: string
+  home?: string
 }
 
 export interface GameOverrides {

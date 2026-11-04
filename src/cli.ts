@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { resolve } from 'node:path'
 import { Command, CommanderError, Help } from 'commander'
 import {
   buildContainers,
@@ -24,6 +23,8 @@ import {
   showContainerConfiguration,
   showDefaults,
   showExecutableOverrides,
+  setHome,
+  showHome,
   suggestConfiguration
 } from './commands/index.js'
 import type {
@@ -54,7 +55,6 @@ function createProgram(): Command {
     .description(
       'WUR — Wine Unified Runner. Portable Wine environments and Windows game launching for macOS and Linux.'
     )
-    .option('--home <directory>', 'use another self-contained state directory')
     .option('--json', 'emit machine-readable JSON')
     .allowExcessArguments(false)
     .showSuggestionAfterError()
@@ -77,7 +77,6 @@ function createProgram(): Command {
   )
   program.hook('preAction', (_command, actionCommand) => {
     const options = actionCommand.optsWithGlobals<GlobalOptions>()
-    if (options.home) process.env.WUR_HOME = resolve(options.home)
     jsonOutput = Boolean(options.json)
   })
 
@@ -172,6 +171,21 @@ function createProgram(): Command {
     .action((_options: object, command: Command) => suggestConfiguration(commandUsesJson(command)))
 
   // #endregion Setup and recommendation commands
+
+  // #region Home commands
+
+  const home = program.command('home').description('show or select WUR’s persistent state directory')
+  home
+    .command('show')
+    .description('show the current WUR home directory')
+    .action((_options: object, command: Command) => showHome(commandUsesJson(command)))
+  home
+    .command('set')
+    .description('set WUR’s persistent state directory to an existing writable directory')
+    .argument('<directory>', 'existing writable directory')
+    .action((directory: string, _options: object, command: Command) => setHome(directory, commandUsesJson(command)))
+
+  // #endregion Home commands
 
   // #region Container commands
 

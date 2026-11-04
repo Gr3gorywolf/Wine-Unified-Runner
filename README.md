@@ -283,11 +283,11 @@ release/
 
 Every prefix exposes the same Windows user, `C:\\users\\user`, through a link to the portable `user/` directory. Saves, Documents, AppData, and similar Windows profile data are therefore shared across containers and runtimes.
 
-To place state elsewhere for one command, use `--home DIRECTORY`. To make another directory the default, set `WUR_HOME`. The former `PROTON_CLI_HOME` variable remains a compatibility alias for older installations.
+Choose a different persistent state directory with `wur home set DIRECTORY`. WUR stores that absolute path in the `config/config.json` beside the executable, so it can locate the selected home on later runs. The directory must already exist and be writable.
 
 ## Output and global options
 
-Commands that return lists or structured values support `--json`. Use `--home DIRECTORY` before the program separator, and use `--` to pass remaining arguments to the Windows executable.
+Commands that return lists or structured values support `--json`. Use `wur home show` to print the currently selected home, and use `--` to pass remaining arguments to the Windows executable.
 
 `runtime install --json` and `component install --json` use JSON Lines so callers can consume live download state. Each line is either a progress event or, if the installation fails, an error event:
 
@@ -299,7 +299,9 @@ Commands that return lists or structured values support `--json`. Use `--home DI
 
 ```sh
 wur runtime list --json
-wur --home /Volumes/Games/wur container list
+wur home set /Volumes/Games/wur
+wur home show
+wur container list
 wur run game.exe -- --safe-mode
 ```
 

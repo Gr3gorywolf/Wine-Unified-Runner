@@ -48,7 +48,7 @@ export const defaultsFileSchema = z
   .strict()
 
 export const appConfigSchema = z
-  .object({ schemaVersion: z.literal(1), defaultContainer: z.string().optional() })
+  .object({ schemaVersion: z.literal(1), defaultContainer: z.string().optional(), home: z.string().min(1).optional() })
   .strict()
 
 const partialLaunch = launchOptionsSchema.partial()

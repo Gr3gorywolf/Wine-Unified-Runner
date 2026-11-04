@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,17 +11,35 @@ declare const __WUR_STANDALONE__: boolean | undefined
 const standaloneBinary = typeof __WUR_STANDALONE__ !== 'undefined' && __WUR_STANDALONE__
 const moduleDirectory = standaloneBinary ? dirname(process.execPath) : dirname(fileURLToPath(import.meta.url))
 
-export function getPaths(): Paths {
-  // PROTON_CLI_HOME remains a compatibility alias for pre-WUR installations.
-  const configuredRoot = process.env.WUR_HOME || process.env.PROTON_CLI_HOME
-  const root = configuredRoot
-    ? resolve(configuredRoot)
-    : // dist/src/services contains this module and dist is the portable CLI folder.
-      // Keeping state here makes removing this folder a complete uninstall.
-      standaloneBinary
-      ? moduleDirectory
-      : resolve(moduleDirectory, '..', '..')
+/** The directory beside the binary that retains WUR's home selection. */
+function installationRoot(): string {
+  // dist/src/services contains this module and dist is the portable CLI folder.
+  // Keeping state here makes removing this folder a complete uninstall.
+  return standaloneBinary ? moduleDirectory : resolve(moduleDirectory, '..', '..')
+}
 
+function configuredHome(root: string): string | undefined {
+  const configFile = join(root, 'config', 'config.json')
+  if (!existsSync(configFile)) return undefined
+
+  let value: unknown
+  try {
+    value = JSON.parse(readFileSync(configFile, 'utf8'))
+  } catch {
+    throw new Error(`Unable to read WUR configuration: ${configFile}`)
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`WUR configuration must be an object: ${configFile}`)
+  }
+  const config = value as Record<string, unknown>
+  if (!Object.hasOwn(config, 'home')) return undefined
+  if (typeof config.home !== 'string' || !config.home.trim()) {
+    throw new Error(`WUR configuration home must be a non-empty path: ${configFile}`)
+  }
+  return resolve(config.home)
+}
+
+function pathsForRoot(root: string): Paths {
   const installedDefaults = standaloneBinary
     ? resolve(moduleDirectory, 'defaults.json')
     : resolve(moduleDirectory, '..', '..', 'defaults.json')
@@ -50,6 +68,17 @@ export function getPaths(): Paths {
     bundledDefaults: existsSync(installedDefaults) ? installedDefaults : developmentDefaults,
     overrideTemplate: existsSync(installedOverrideTemplate) ? installedOverrideTemplate : developmentOverrideTemplate
   }
+}
+
+/** Returns the state paths for the persisted WUR home. */
+export function getPaths(): Paths {
+  const root = installationRoot()
+  return pathsForRoot(configuredHome(root) || root)
+}
+
+/** Returns the paths beside the executable, regardless of the selected home. */
+export function getInstallationPaths(): Paths {
+  return pathsForRoot(installationRoot())
 }
 
 export async function ensurePaths(paths: Paths): Promise<void> {

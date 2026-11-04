@@ -1,5 +1,4 @@
 export interface GlobalOptions {
-  home?: string
   json?: boolean
 }
 

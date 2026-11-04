@@ -81,29 +81,50 @@ const testDefaults: DefaultsFile = {
 
 test('defaults create a portable container.json base', async () => {
   const home = await mkdtemp(join(tmpdir(), 'wur-test-'))
-  const prior = process.env.WUR_HOME
-  process.env.WUR_HOME = home
   try {
-    const paths = getPaths()
+    const paths = portablePaths(home)
     const defaults = await loadDefaults(paths)
     const container = newContainer('my-game', defaults, paths)
     assert.equal(container.name, 'my-game')
     assert.equal(container.prefix, join(home, 'containers', 'my-game', 'prefix'))
     assert.equal(container.components.dxvk.enabled, true)
   } finally {
-    if (prior === undefined) delete process.env.WUR_HOME
-    else process.env.WUR_HOME = prior
     await rm(home, { recursive: true, force: true })
   }
 })
 
-test('the compiled CLI keeps its default state beside the executable', () => {
-  const prior = process.env.WUR_HOME
-  delete process.env.WUR_HOME
+const cliPath = resolve(process.cwd(), 'dist', 'src', 'cli.js')
+const defaultCliHome = resolve(process.cwd(), 'dist')
+
+async function setCliHome(home: string): Promise<void> {
+  await execFileAsync(process.execPath, [cliPath, 'home', 'set', home])
+}
+
+test('the compiled CLI keeps its default state beside the executable', async () => {
+  await setCliHome(defaultCliHome)
   try {
     assert.equal(getPaths().root, resolve(process.cwd(), 'dist'))
   } finally {
-    if (prior !== undefined) process.env.WUR_HOME = prior
+    await setCliHome(defaultCliHome)
+  }
+})
+
+test('home set persists a writable state directory and home show returns it', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'wur-home-'))
+  try {
+    const set = await execFileAsync(process.execPath, [cliPath, 'home', 'set', home])
+    assert.deepEqual(JSON.parse(set.stdout), { home })
+
+    const show = await execFileAsync(process.execPath, [cliPath, 'home', 'show'])
+    assert.deepEqual(JSON.parse(show.stdout), { home })
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [cliPath, 'home', 'set', join(home, 'missing')]),
+      /Home directory does not exist/
+    )
+  } finally {
+    await setCliHome(defaultCliHome)
+    await rm(home, { recursive: true, force: true })
   }
 })
 
@@ -205,26 +226,19 @@ test('override CLI shows no sidecar as an empty object and set creates and updat
   try {
     await mkdir(dirname(executable), { recursive: true })
     await writeFile(executable, '')
+    await mkdir(join(root, 'home'), { recursive: true })
+    await setCliHome(join(root, 'home'))
 
-    const absent = await execFileAsync(process.execPath, [cli, '--home', join(root, 'home'), 'override', executable])
+    const absent = await execFileAsync(process.execPath, [cli, 'override', executable])
     assert.deepEqual(JSON.parse(absent.stdout), {})
     assert.equal(existsSync(sidecar), false)
 
-    const created = await execFileAsync(process.execPath, [
-      cli,
-      '--home',
-      join(root, 'home'),
-      'override',
-      'set',
-      executable
-    ])
+    const created = await execFileAsync(process.execPath, [cli, 'override', 'set', executable])
     assert.deepEqual(JSON.parse(created.stdout), {})
     assert.equal(existsSync(sidecar), true)
 
     const updated = await execFileAsync(process.execPath, [
       cli,
-      '--home',
-      join(root, 'home'),
       'override',
       'set',
       executable,
@@ -248,8 +262,6 @@ test('override CLI shows no sidecar as an empty object and set creates and updat
 
     const removed = await execFileAsync(process.execPath, [
       cli,
-      '--home',
-      join(root, 'home'),
       'override',
       'set',
       executable,
@@ -263,36 +275,17 @@ test('override CLI shows no sidecar as an empty object and set creates and updat
       components: { dxvk: { enabled: true } }
     })
 
-    const shown = await execFileAsync(process.execPath, [
-      cli,
-      '--home',
-      join(root, 'home'),
-      'override',
-      'show',
-      executable
-    ])
+    const shown = await execFileAsync(process.execPath, [cli, 'override', 'show', executable])
     assert.deepEqual(JSON.parse(shown.stdout), JSON.parse(removed.stdout))
 
-    const deleted = await execFileAsync(process.execPath, [
-      cli,
-      '--home',
-      join(root, 'home'),
-      'override',
-      'delete',
-      executable
-    ])
+    const deleted = await execFileAsync(process.execPath, [cli, 'override', 'delete', executable])
     assert.deepEqual(JSON.parse(deleted.stdout), { removed: true })
     assert.equal(existsSync(sidecar), false)
 
-    const afterDelete = await execFileAsync(process.execPath, [
-      cli,
-      '--home',
-      join(root, 'home'),
-      'override',
-      executable
-    ])
+    const afterDelete = await execFileAsync(process.execPath, [cli, 'override', executable])
     assert.deepEqual(JSON.parse(afterDelete.stdout), {})
   } finally {
+    await setCliHome(defaultCliHome)
     await rm(root, { recursive: true, force: true })
   }
 })
@@ -549,15 +542,17 @@ test('runtime list follows the component list convention: local by default and r
     await mkdir(runtime.path, { recursive: true })
     await writeJson(join(runtime.path, 'runtime.json'), runtime)
     const cli = resolve(process.cwd(), 'dist', 'src', 'cli.js')
-    const local = await execFileAsync(process.execPath, [cli, '--home', root, 'runtime', 'list', '--json'])
+    await setCliHome(root)
+    const local = await execFileAsync(process.execPath, [cli, 'runtime', 'list', '--json'])
     assert.deepEqual(JSON.parse(local.stdout), [
       { ...runtime, ignoredComponents: runtimeSources['ge-proton'].ignoredComponents }
     ])
     await assert.rejects(
-      execFileAsync(process.execPath, [cli, '--home', root, 'runtime', 'installed']),
+      execFileAsync(process.execPath, [cli, 'runtime', 'installed']),
       /Use runtime list, runtime install, or runtime remove/
     )
   } finally {
+    await setCliHome(defaultCliHome)
     await rm(root, { recursive: true, force: true })
   }
 })
@@ -596,10 +591,9 @@ test('JSON installs stream progress events and report errors as JSON', async () 
       }
     })
     const cli = resolve(process.cwd(), 'dist', 'src', 'cli.js')
+    await setCliHome(root)
     const runtimeResult = await execFileAsync(process.execPath, [
       cli,
-      '--home',
-      root,
       'runtime',
       'install',
       runtimeSource,
@@ -608,8 +602,6 @@ test('JSON installs stream progress events and report errors as JSON', async () 
     ])
     const componentResult = await execFileAsync(process.execPath, [
       cli,
-      '--home',
-      root,
       'component',
       'install',
       'dxvk',
@@ -637,13 +629,14 @@ test('JSON installs stream progress events and report errors as JSON', async () 
       ]
     )
     await assert.rejects(
-      execFileAsync(process.execPath, [cli, '--home', root, 'component', 'install', 'unknown', '--json']),
+      execFileAsync(process.execPath, [cli, 'component', 'install', 'unknown', '--json']),
       (error: { stdout?: string }) => {
         assert.deepEqual(JSON.parse(error.stdout?.trim() || ''), { error: 'Unknown component "unknown".' })
         return true
       }
     )
   } finally {
+    await setCliHome(defaultCliHome)
     await rm(root, { recursive: true, force: true })
   }
 })
