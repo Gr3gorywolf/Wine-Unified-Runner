@@ -416,13 +416,47 @@ The absolute selection is stored in `config/config.json` beside the executable, 
 
 ## JSON output and automation
 
-Commands that return lists or structured values support `--json`. Runtime and component installations emit JSON Lines so a caller can consume live progress and errors without parsing terminal text:
+Commands that return lists or structured values support `--json`. Standard results are written to stdout as one JSON document; an empty list is `[]`.
+
+Listings return an array. For example, containers and installed components return:
+
+```jsonc
+// wur container list --json
+[
+  {
+    "name": "cyberpunk",
+    "runtime": "ge-proton/latest",
+    "default": true,
+    "initialized": true,
+    "prefix": "/portable/wur/containers/cyberpunk/prefix"
+  }
+]
+
+// wur component list --json
+[
+  {
+    "name": "dxvk",
+    "version": "latest",
+    "path": "/portable/wur/components/dxvk/latest",
+    "installedAt": "2026-11-06T12:00:00.000Z"
+  }
+]
+```
+
+Installations use **JSON Lines** so callers can display live progress:
 
 ```json
-{"name":"wine-crossover","progress":50}
-{"name":"wine-crossover","progress":100}
-{"error":"Download failed (404) for https://example.invalid/runtime.tar.xz"}
+{"name":"dxvk","progress":0}
+{"name":"dxvk","progress":100}
 ```
+
+Errors use one JSON object and WUR exits with a non-zero status:
+
+```json
+{"error":"Download failed (404) for https://example.invalid/component.tar.xz"}
+```
+
+Commands such as `container install-redist`, `run`, and `container exec` also return JSON when requested, including their relevant paths, cache details, or process exit result.
 
 Colors are disabled automatically when output is redirected or when the `NO_COLOR` environment variable is set.
 
