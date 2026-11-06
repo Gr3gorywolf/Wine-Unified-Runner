@@ -102,6 +102,14 @@ See [Build from source](#build-from-source) for validation commands and standalo
 
 ## Quick start
 
+Install the latest release for your platform with one command:
+
+```sh
+curl -sSL https://links.gregoryc.dev/wur | sh
+```
+
+The installer places WUR in `~/wur` and asks whether to create a global `wur` command using a directory already in your `PATH`. It never edits your shell configuration or changes `PATH`.
+
 Getting started takes only two commands:
 
 ```sh
