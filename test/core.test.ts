@@ -314,11 +314,13 @@ test('an existing Windows-launchable file is eligible for the implicit run comma
   const root = await mkdtemp(join(tmpdir(), 'wur-invocation-'))
   const extensions = ['com', 'exe', 'bat', 'cmd', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'msc', 'pif', 'scf', 'scr']
   const directoryNamedExe = join(root, 'not-a-game.exe')
+  const uppercaseExecutable = join(root, 'Game.EXE')
   try {
     await Promise.all(extensions.map((extension) => writeFile(join(root, `Game.${extension}`), '')))
+    await writeFile(uppercaseExecutable, '')
     await mkdir(directoryNamedExe)
     for (const extension of extensions) assert.equal(isExecutableFallback(join(root, `Game.${extension}`)), true)
-    assert.equal(isExecutableFallback(join(root, 'Game.EXE')), true)
+    assert.equal(isExecutableFallback(uppercaseExecutable), true)
     assert.equal(isExecutableFallback(join(root, 'missing.exe')), false)
     assert.equal(isExecutableFallback(join(root, 'Game.msi')), false)
     assert.equal(isExecutableFallback(directoryNamedExe), false)
