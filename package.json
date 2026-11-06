@@ -2,7 +2,7 @@
     "name": "wur",
     "version": "0.1.0",
     "description": "WUR — Wine Unified Runner: portable Wine environments and Windows game launches",
-    "license": "GPL-3.0-only",
+    "license": "MIT",
     "type": "module",
     "bin": {
         "wur": "dist/src/cli.js"
