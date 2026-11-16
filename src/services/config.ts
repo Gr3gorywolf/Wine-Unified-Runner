@@ -28,7 +28,7 @@ import { readJson, writeJson } from '../utils/json.js'
 import { onlyKeys } from '../utils/objects.js'
 import { parseWithSchema } from '../utils/validation.js'
 export { parseJsonValue, parseSetExpression, setAtPath } from '../utils/settings.js'
-export { GAME_OVERRIDE_FILE, parseGameOverrides } from '../utils/configOverrides.js'
+export { applyGameOverrideExpressions, GAME_OVERRIDE_FILE, parseGameOverrides } from '../utils/configOverrides.js'
 import type {
   AppConfig,
   ComponentSelection,

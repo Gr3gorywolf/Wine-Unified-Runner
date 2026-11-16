@@ -146,7 +146,7 @@ Most users only need `install-recommended` once and `run` afterward. The remaini
 | `wur help <command>` | Show help for a command group or subcommand. | `wur help container` |
 | `wur suggest` | Show platform-compatible runtime and component recommendations. | `wur suggest --json` |
 | `wur install-recommended [--dry-run] [--force]` | Install the runtime and components enabled in `config/defaults.json`; `--dry-run` only prints the plan. | `wur install-recommended --dry-run` |
-| `wur run <executable> [arguments...]` | Launch a Windows program with the default or selected container. Supports `--container <name>` and `--cwd <directory>`. | `wur run game.exe --container game -- -windowed` |
+| `wur run <executable> [arguments...]` | Launch a Windows program with the default or selected container. Supports `--container <name>`, `--cwd <directory>`, and repeatable in-memory `--set <path=value>` overrides. | `wur run game.exe --set launch.showFps=true -- -windowed` |
 | `wur <executable> [arguments...]` | Shortcut for `wur run` when the file already exists. | `wur game.exe -- --safe-mode` |
 
 ### Runtimes
@@ -341,7 +341,7 @@ wur override set "/games/My Game/Game.exe" --val launch.showFps=
 wur override delete "/games/My Game/Game.exe"
 ```
 
-Use the complete property path shown in the template. Short aliases such as `enableHdr` or `version` are rejected. `--container <name>` on `wur run` takes precedence over `containerName`, but all component, launch, and environment overrides still apply. Overrides affect only that launch and never rewrite `container.json`.
+Use the complete property path shown in the template. Short aliases such as `enableHdr` or `version` are rejected. `wur run` also accepts repeatable `--set <path=value>` flags with the same paths and values as `wur override set`; they take precedence over the JSONC sidecar for that launch without modifying it. When repeated paths conflict, the last `--set` wins. `--container <name>` takes precedence over both JSONC and `--set containerName=...`, but all component, launch, and environment overrides still apply. Overrides affect only that launch and never rewrite `container.json`.
 
 ## Declarative container manifests
 

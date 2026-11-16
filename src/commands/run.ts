@@ -1,5 +1,11 @@
 import { dirname, resolve } from 'node:path'
-import { applyGameOverrides, hasGameLaunchOverrides, loadContainer, loadGameOverrides } from '../services/config.js'
+import {
+  applyGameOverrideExpressions,
+  applyGameOverrides,
+  hasGameLaunchOverrides,
+  loadContainer,
+  loadGameOverrides
+} from '../services/config.js'
 import { ensureDefaultContainer, prepareContainer } from '../services/containers.js'
 import { runRuntime, stopWineServer } from '../services/launch.js'
 import { getPaths } from '../services/paths.js'
@@ -16,13 +22,14 @@ export async function runExecutable(
   const paths = getPaths()
   const executablePath = resolve(executable)
   const gameOverrides = await loadGameOverrides(executablePath, paths)
-  const selectedContainer = options.container || gameOverrides.overrides.containerName
+  const effectiveOverrides = applyGameOverrideExpressions(gameOverrides.overrides, options.set)
+  const selectedContainer = options.container || effectiveOverrides.containerName
   const container = selectedContainer
     ? await loadContainer(selectedContainer, paths)
     : await ensureDefaultContainer(paths)
-  const launchContainer = applyGameOverrides(container, gameOverrides.overrides)
+  const launchContainer = applyGameOverrides(container, effectiveOverrides)
   const prepared = await prepareContainer(launchContainer, paths, {
-    persist: !hasGameLaunchOverrides(gameOverrides.overrides)
+    persist: !hasGameLaunchOverrides(effectiveOverrides)
   })
   const execution = await (async () => {
     try {

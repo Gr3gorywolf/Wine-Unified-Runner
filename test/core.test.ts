@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import test from 'node:test'
 import {
+  applyGameOverrideExpressions,
   applyGameOverrides,
   loadAppConfig,
   loadContainer,
@@ -308,6 +309,39 @@ test('setGameOverrides validates values before creating a sidecar', async () => 
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('run override expressions take precedence in memory without mutating JSONC values', () => {
+  const sidecarOverrides = {
+    containerName: 'sidecar-container',
+    components: { dxvk: { enabled: false, version: '2.4' } },
+    launch: { enableHdr: false, showFps: true, environment: { DXVK_ASYNC: '0', KEEP: 'yes' } }
+  }
+
+  const effective = applyGameOverrideExpressions(sidecarOverrides, [
+    'containerName=cli-container',
+    'components.dxvk.enabled=true',
+    'launch.enableHdr=true',
+    'launch.showFps=',
+    'launch.environment.DXVK_ASYNC=1',
+    'launch.enableHdr=false',
+    'launch.enableHdr=true'
+  ])
+
+  assert.deepEqual(effective, {
+    containerName: 'cli-container',
+    components: { dxvk: { enabled: true, version: '2.4' } },
+    launch: { enableHdr: true, environment: { DXVK_ASYNC: '1', KEEP: 'yes' } }
+  })
+  assert.equal(sidecarOverrides.containerName, 'sidecar-container')
+  assert.equal(sidecarOverrides.launch.enableHdr, false)
+  assert.equal(sidecarOverrides.launch.showFps, true)
+})
+
+test('run documents repeatable in-memory game overrides', async () => {
+  const result = await execFileAsync(process.execPath, [cliPath, 'run', '--help'])
+  assert.match(result.stdout, /--set <path=value>/)
+  assert.match(result.stdout, /same syntax as wur override set/)
 })
 
 test('an existing Windows-launchable file is eligible for the implicit run command', async () => {

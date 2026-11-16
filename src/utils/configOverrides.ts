@@ -81,6 +81,14 @@ export function applyGameOverrideAssignments(contents: string, assignments: Game
   return updated
 }
 
+/** Applies validated override expressions to one launch without editing its JSONC sidecar. */
+export function applyGameOverrideExpressions(overrides: GameOverrides, expressions: string[]): GameOverrides {
+  if (!expressions.length) return overrides
+  const assignments = expressions.map(parseGameOverrideAssignment)
+  const updated = applyGameOverrideAssignments(JSON.stringify(overrides), assignments)
+  return parseGameOverrides(updated)
+}
+
 function normalizedValue(path: string[], value: JsonPrimitive): JsonPrimitive | undefined {
   if (gameOverridesSchema.safeParse(valueAtPath(path, value)).success) return value
   const asString = String(value)

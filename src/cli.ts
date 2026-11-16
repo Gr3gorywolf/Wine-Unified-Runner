@@ -324,6 +324,11 @@ function createProgram(): Command {
     .argument('[arguments...]', 'arguments passed to the Windows program')
     .option('--container <name>', 'container to use')
     .option('--cwd <directory>', 'working directory')
+    .option('--set <path=value>', 'override a game setting for this launch', collectOption, [])
+    .addHelpText(
+      'after',
+      `\n${colors.dim('Repeat --set to override JSONC values for this launch. Paths and values use the same syntax as wur override set.')}`
+    )
     .action((executable: string, gameArgs: string[], options: RunOptions, command: Command) =>
       runExecutable(executable, gameArgs || [], options, commandUsesJson(command))
     )

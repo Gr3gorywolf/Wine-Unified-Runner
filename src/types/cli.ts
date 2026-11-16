@@ -55,7 +55,7 @@ export interface OverrideSetOptions {
 
 export interface ContainerConfigureOptions extends ContainerNameOptions, SettingsOptions {}
 
-export interface RunOptions {
+export interface RunOptions extends SettingsOptions {
   container?: string
   cwd?: string
 }
