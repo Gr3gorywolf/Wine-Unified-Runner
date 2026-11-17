@@ -189,6 +189,7 @@ The first `wur run` creates a container named `default` when none exists. Create
 | `wur container configure [name]` | Change one or more validated settings with repeatable `--set <path=value>`. | `wur container configure game --set launch.showFps=true` |
 | `wur container default [name]` | Show the current default when no name is given, or select a new default. | `wur container default game` |
 | `wur container remove [name]` | Remove a managed container and its prefix; `delete` is an alias. | `wur container remove game` |
+| `wur container prepare <name>` | Install the runtime and enabled components declared in `container.json`, then prepare the prefix. Emits installation messages and progress. | `wur container prepare game` |
 | `wur container install-redist [name]` | Download or reuse the cached Windows redistributable bundle and run its interactive installer. | `wur container install-redist game` |
 | `wur container exec <program> [arguments...]` | Run a Windows executable or Wine built-in inside a prepared container. Supports `--name` and `--cwd`. | `wur container exec winecfg --name game` |
 | `wur build [name]` | Build one or all container manifests found under `containers/*/config.json`; also accepts `--name <name>`. | `wur build my-game` |
@@ -456,6 +457,12 @@ Installations use **JSON Lines** so callers can display live progress:
 ```json
 {"name":"dxvk","progress":0}
 {"name":"dxvk","progress":100}
+```
+
+`container prepare` also identifies the active installation in every event:
+
+```json
+{"name":"dxvk","progress":42,"message":"Installing component dxvk/latest…"}
 ```
 
 Errors use one JSON object and WUR exits with a non-zero status:

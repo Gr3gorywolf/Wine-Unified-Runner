@@ -13,6 +13,7 @@ import {
   listComponents,
   listContainerConfigurations,
   listRuntimes,
+  prepareContainerConfiguration,
   removeContainerConfiguration,
   removeSelectedComponent,
   removeSelectedRuntime,
@@ -239,6 +240,13 @@ function createProgram(): Command {
     .option('--name <name>', 'container name')
     .action((name: string | undefined, options: ContainerNameOptions, command: Command) =>
       removeContainerConfiguration(name, options, commandUsesJson(command))
+    )
+  container
+    .command('prepare')
+    .description('install dependencies from container.json and prepare the Wine prefix')
+    .argument('<name>', 'container name')
+    .action((name: string, _options: object, command: Command) =>
+      prepareContainerConfiguration(name, commandUsesJson(command))
     )
   container
     .command('install-redist')

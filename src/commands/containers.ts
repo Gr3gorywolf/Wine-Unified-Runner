@@ -19,7 +19,8 @@ import type {
   ContainerConfigureOptions,
   ContainerCreateOptions,
   ContainerExecOptions,
-  ContainerNameOptions
+  ContainerNameOptions,
+  ContainerPrepareProgress
 } from '../types/index.js'
 import { containerComponentKey, requireContainerName } from '../utils/cli.js'
 import { output } from '../utils/output.js'
@@ -123,6 +124,38 @@ export async function removeContainerConfiguration(
   json: boolean
 ): Promise<void> {
   output({ removed: true, ...(await removeContainer(requireContainerName(nameArgument, options), getPaths())) }, json)
+}
+
+function containerPrepareProgressReporter(json: boolean): (event: ContainerPrepareProgress) => void {
+  const lastProgress = new Map<string, number>()
+  return (event) => {
+    if (lastProgress.get(event.name) === event.progress) return
+    lastProgress.set(event.name, event.progress)
+    if (json) {
+      console.log(JSON.stringify(event))
+      return
+    }
+    console.error(`${event.message} ${event.progress}%`)
+  }
+}
+
+/** Prepares one container and installs every missing dependency declared by container.json. */
+export async function prepareContainerConfiguration(name: string, json: boolean): Promise<void> {
+  const paths = getPaths()
+  const container = await loadContainer(name, paths)
+  const prepared = await prepareContainer(container, paths, {
+    quiet: true,
+    onProgress: containerPrepareProgressReporter(json)
+  })
+  const result = {
+    name: prepared.container.name,
+    progress: 100,
+    message: `Container "${prepared.container.name}" is prepared.`,
+    runtime: `${prepared.runtime.source}/${prepared.runtime.version}`,
+    prefix: prepared.container.prefix
+  }
+  if (json) console.log(JSON.stringify(result))
+  else output(result, false)
 }
 
 /** Downloads or reuses the All-in-One Runtime Installer and runs it under Wine. */

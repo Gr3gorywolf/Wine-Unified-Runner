@@ -18,10 +18,13 @@ import { findInstalledRuntime, installRuntime } from './runtime.js'
 import { canRunRuntimeOnThisSystem, ignoresComponent, runtimeSources, sourcesForPlatform } from './sources.js'
 import type {
   ContainerConfig,
+  ContainerPrepareProgress,
   ContainerWineComponentRequest,
   DefaultsFile,
+  InstallOptions,
   InstalledRuntime,
-  Paths
+  Paths,
+  PrepareContainerOptions
 } from '../types/index.js'
 import { assertContainerName, containerDirectory, containerFile, containerManifestFile } from '../utils/filesystem.js'
 
@@ -39,12 +42,45 @@ export async function listContainers(paths = getPaths()): Promise<ContainerConfi
   return containers.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function resolvedRuntime(container: ContainerConfig, paths: Paths): Promise<InstalledRuntime> {
+function dependencyInstallOptions(
+  type: 'runtime' | 'component',
+  name: string,
+  version: string,
+  options: PrepareContainerOptions
+): InstallOptions {
+  const message = `Installing ${type} ${name}/${version}…`
+  const report = options.onProgress
+  return {
+    quiet: options.quiet,
+    onProgress: report
+      ? (progress) => {
+          const event: ContainerPrepareProgress = {
+            name,
+            progress: Math.min(100, Math.max(0, Math.floor(progress))),
+            message
+          }
+          report(event)
+        }
+      : undefined
+  }
+}
+
+async function resolvedRuntime(
+  container: ContainerConfig,
+  paths: Paths,
+  options: PrepareContainerOptions
+): Promise<InstalledRuntime> {
   const { source, version } = container.runtime
   const installed = await findInstalledRuntime(source, version, paths)
   if (installed) return installed
   try {
-    return await installRuntime(source, version, false, paths)
+    return await installRuntime(
+      source,
+      version,
+      false,
+      paths,
+      dependencyInstallOptions('runtime', source, version, options)
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(`Runtime ${source}/${version} is not installed and automatic installation failed: ${message}`)
@@ -79,7 +115,8 @@ async function registerNativeDlls(
 async function prepareWineComponents(
   container: ContainerConfig,
   runtime: InstalledRuntime,
-  paths: Paths
+  paths: Paths,
+  options: PrepareContainerOptions
 ): Promise<void> {
   const requested: ContainerWineComponentRequest[] = [
     { selection: 'dxvk', name: process.platform === 'darwin' ? 'dxvk-macos' : 'dxvk' },
@@ -90,7 +127,15 @@ async function prepareWineComponents(
     const selected = container.components[item.selection]
     if (!selected.enabled || ignoresComponent(runtime.source, item.name)) continue
     const installed = await findInstalledComponent(item.name, selected.version, paths)
-    const component = installed || (await installComponent(item.name, selected.version, false, paths))
+    const component =
+      installed ||
+      (await installComponent(
+        item.name,
+        selected.version,
+        false,
+        paths,
+        dependencyInstallOptions('component', item.name, selected.version, options)
+      ))
     const marker = join(container.prefix, `current_${item.name}`)
     if (existsSync(marker) && (await readFile(marker, 'utf8')).trim() === component.version) continue
     const dlls = await applyDllComponent(component, container.prefix)
@@ -102,7 +147,8 @@ async function prepareWineComponents(
 async function prepareRuntimeComponents(
   container: ContainerConfig,
   runtime: InstalledRuntime,
-  paths: Paths
+  paths: Paths,
+  options: PrepareContainerOptions
 ): Promise<void> {
   const requested: Array<{ enabled: boolean; version: string; name: 'eac-runtime' | 'battleye-runtime' }> = [
     { ...container.components.eacRuntime, name: 'eac-runtime' },
@@ -112,7 +158,14 @@ async function prepareRuntimeComponents(
   for (const component of requested) {
     if (component.enabled && !ignoresComponent(runtime.source, component.name)) {
       const installed = await findInstalledComponent(component.name, component.version, paths)
-      if (!installed) await installComponent(component.name, component.version, false, paths)
+      if (!installed)
+        await installComponent(
+          component.name,
+          component.version,
+          false,
+          paths,
+          dependencyInstallOptions('component', component.name, component.version, options)
+        )
     }
   }
 }
@@ -120,7 +173,7 @@ async function prepareRuntimeComponents(
 export async function prepareContainer(
   container: ContainerConfig,
   paths = getPaths(),
-  options: { persist?: boolean } = {}
+  options: PrepareContainerOptions = {}
 ): Promise<{ container: ContainerConfig; runtime: InstalledRuntime }> {
   if (!canRunRuntimeOnThisSystem(container.runtime.source)) {
     const alternatives = sourcesForPlatform()
@@ -131,12 +184,12 @@ export async function prepareContainer(
       `${runtimeSources[container.runtime.source].label} cannot run on ${process.platform}/${process.arch}. Use one of: ${alternatives || 'no supported runtime detected'}. Run "wur suggest" for guidance.`
     )
   }
-  const runtime = await resolvedRuntime(container, paths)
+  const runtime = await resolvedRuntime(container, paths, options)
   if (options.persist !== false) await saveContainer(container, paths)
   await initializePrefix(container, runtime)
   await ensureSharedUserProfile(container, runtime, paths)
-  await prepareWineComponents(container, runtime, paths)
-  await prepareRuntimeComponents(container, runtime, paths)
+  await prepareWineComponents(container, runtime, paths, options)
+  await prepareRuntimeComponents(container, runtime, paths, options)
   await stopWineServer(container, runtime)
   return { container, runtime }
 }

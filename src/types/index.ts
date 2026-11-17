@@ -12,9 +12,11 @@ export type {
   AppConfig,
   ContainerConfig,
   ContainerManifest,
+  ContainerPrepareProgress,
   DefaultsFile,
   GameOverrides,
-  LaunchOptions
+  LaunchOptions,
+  PrepareContainerOptions
 } from './containers.js'
 export type {
   BuildOptions,

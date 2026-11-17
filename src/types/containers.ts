@@ -28,6 +28,21 @@ export interface ContainerConfig {
   launch: LaunchOptions
 }
 
+export interface ContainerPrepareProgress {
+  name: string
+  progress: number
+  message: string
+}
+
+export interface PrepareContainerOptions {
+  /** Do not rewrite container.json when preparing an in-memory launch override. */
+  persist?: boolean
+  /** Suppress the installers' own output when progress is handled by a caller. */
+  quiet?: boolean
+  /** Reports download and installation progress for every missing dependency. */
+  onProgress?: (event: ContainerPrepareProgress) => void
+}
+
 export interface DefaultsFile {
   schemaVersion: 1
   container: Omit<ContainerConfig, 'schemaVersion' | 'name' | 'createdAt' | 'updatedAt' | 'prefix'>

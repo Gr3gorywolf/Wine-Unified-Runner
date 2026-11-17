@@ -10,6 +10,7 @@ export {
   executeInContainer,
   installContainerRedistributables,
   listContainerConfigurations,
+  prepareContainerConfiguration,
   removeContainerConfiguration,
   selectDefaultContainer,
   showContainerConfiguration

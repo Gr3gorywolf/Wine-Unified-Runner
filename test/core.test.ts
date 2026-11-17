@@ -144,6 +144,13 @@ test('container install-redist documents its interactive upstream installer', as
   assert.match(result.stdout, /reboot prompt/)
 })
 
+test('container prepare requires a positional container name and documents dependency installation', async () => {
+  const cli = resolve(process.cwd(), 'dist', 'src', 'cli.js')
+  const result = await execFileAsync(process.execPath, [cli, 'container', 'prepare', '--help'])
+  assert.match(result.stdout, /prepare \[options\] <name>/)
+  assert.match(result.stdout, /install dependencies from container\.json/)
+})
+
 test('runtime component exclusions are declared by runtime metadata', () => {
   assert.equal(ignoresComponent('wine-crossover', 'dxvk-macos'), true)
   assert.equal(ignoresComponent('wine-staging-macos', 'dxvk-macos'), false)
