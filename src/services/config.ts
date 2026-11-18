@@ -99,10 +99,7 @@ function loadedContainerComponents(
 }
 
 export function defaultSourceForPlatform(): RuntimeSource {
-  if (process.platform === 'darwin') {
-    return 'wine-crossover'
-  }
-  return 'ge-proton'
+  return process.platform === 'darwin' ?  'wine-crossover' : 'ge-proton'
 }
 
 function nativeDefaults(): DefaultsFile {
