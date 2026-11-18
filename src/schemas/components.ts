@@ -21,6 +21,20 @@ export const containerComponentsSchema = z
     battleyeRuntime: componentSelectionSchema
   })
   .strict()
+
+type OptionalContainerComponentShape = {
+  [Name in keyof typeof containerComponentsSchema.shape]: z.ZodOptional<typeof componentSelectionSchema>
+}
+const optionalContainerComponentShape = Object.fromEntries(
+  Object.keys(containerComponentsSchema.shape).map((name) => [name, componentSelectionSchema.optional()])
+) as OptionalContainerComponentShape
+
+/**
+ * Persisted containers omit selections the selected runtime owns itself.
+ * Their in-memory representation is completed when the file is loaded.
+ */
+export const optionalContainerComponentsSchema = z.object(optionalContainerComponentShape).strict()
+
 type PartialContainerComponentShape = {
   [Name in keyof typeof containerComponentsSchema.shape]: z.ZodOptional<typeof partialComponentSelectionSchema>
 }

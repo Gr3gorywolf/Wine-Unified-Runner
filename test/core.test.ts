@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -21,8 +21,8 @@ import {
   showGameOverrides,
   setAtPath
 } from '../src/services/config.js'
-import { removeComponent } from '../src/services/components.js'
-import { buildContainer, createContainer, removeContainer } from '../src/services/containers.js'
+import { applyDllComponent, removeComponent } from '../src/services/components.js'
+import { buildContainer, createContainer, prepareContainer, removeContainer } from '../src/services/containers.js'
 import { buildLaunchEnvironment, runRuntime } from '../src/services/launch.js'
 import { isExecutableFallback } from '../src/services/invocation.js'
 import { getPaths } from '../src/services/paths.js'
@@ -31,7 +31,7 @@ import { readJson, writeJson } from '../src/utils/json.js'
 import { containerManifestFile } from '../src/utils/filesystem.js'
 import { ensureSharedUserProfile } from '../src/services/profile.js'
 import { findRuntimeBinary, removeRuntime, runtimeId } from '../src/services/runtime.js'
-import type { ContainerConfig, DefaultsFile, InstalledRuntime, Paths } from '../src/types/index.js'
+import type { ContainerConfig, DefaultsFile, InstalledComponent, InstalledRuntime, Paths } from '../src/types/index.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -152,17 +152,131 @@ test('container prepare requires a positional container name and documents depen
 })
 
 test('runtime component exclusions are declared by runtime metadata', () => {
-  assert.equal(ignoresComponent('wine-crossover', 'dxvk-macos'), true)
+  assert.equal(ignoresComponent('wine-crossover', 'dxvk-macos'), false)
   assert.equal(ignoresComponent('wine-staging-macos', 'dxvk-macos'), false)
-  assert.deepEqual(runtimeSources['wine-crossover'].ignoredComponents, [
-    'dxvk',
-    'dxvk-nvapi',
-    'vkd3d',
-    'dxvk-macos',
-    'dxmt'
-  ])
+  assert.deepEqual(runtimeSources['wine-crossover'].ignoredComponents, ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxmt'])
   assert.equal(runtimeSources['proton-archive'].kind, 'proton')
   assert.equal(ignoresComponent('proton-archive', 'dxvk'), true)
+})
+
+test('runtime-owned components are ignored in memory and omitted from container.json', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'wur-runtime-owned-components-'))
+  const paths = portablePaths(root)
+  try {
+    const container = newContainer('gptk', testDefaults, paths)
+    container.runtime = { source: 'game-porting-toolkit', version: 'latest' }
+    // Simulate both --component dxvk=true and --set components.dxvk.enabled=true.
+    container.components.dxvk.enabled = true
+    container.components.dxvkNvapi.enabled = true
+    container.components.vkd3d.enabled = true
+    await saveContainer(container, paths)
+
+    assert.equal(container.components.dxvk.enabled, false)
+    assert.equal(container.components.dxvkNvapi.enabled, false)
+    assert.equal(container.components.vkd3d.enabled, false)
+
+    const persisted = await readJson<{ components: Record<string, unknown> }>(
+      join(paths.containers, 'gptk', 'container.json')
+    )
+    assert.equal('dxvk' in persisted.components, false)
+    assert.equal('dxvkNvapi' in persisted.components, false)
+    assert.equal('vkd3d' in persisted.components, false)
+    assert.equal('eacRuntime' in persisted.components, true)
+    assert.equal('battleyeRuntime' in persisted.components, true)
+
+    await writeJson(join(paths.containers, 'gptk', 'container.json'), {
+      ...persisted,
+      components: {
+        ...persisted.components,
+        dxvk: { enabled: true, version: 'latest' }
+      }
+    })
+    const loaded = await loadContainer('gptk', paths)
+    assert.equal(loaded.components.dxvk.enabled, false)
+    await saveContainer(loaded, paths)
+    const rewritten = await readJson<{ components: Record<string, unknown> }>(
+      join(paths.containers, 'gptk', 'container.json')
+    )
+    assert.equal('dxvk' in rewritten.components, false)
+
+    const overridden = applyGameOverrides(loaded, { components: { dxvk: { enabled: true } } })
+    assert.equal(overridden.components.dxvk.enabled, false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('container prepare disables a DLL component through registry overrides without deleting its files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'wur-prepare-component-removal-'))
+  const paths = portablePaths(root)
+  const source = process.platform === 'darwin' ? 'wine-staging-macos' : 'wine-lutris'
+  const componentName = process.platform === 'darwin' ? 'dxvk-macos' : 'dxvk'
+  const runtimePath = join(paths.runtimes, `${source}--test`)
+  const runtimeBin =
+    process.platform === 'darwin'
+      ? join(runtimePath, 'Contents', 'Resources', 'wine', 'bin', 'wine')
+      : join(runtimePath, 'bin', 'wine')
+  const commandLog = join(root, 'runtime-commands.log')
+  const componentPath = join(paths.components, componentName, 'test')
+  try {
+    await mkdir(dirname(runtimeBin), { recursive: true })
+    await writeFile(runtimeBin, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(commandLog)}\nexit 0\n`)
+    await chmod(runtimeBin, 0o755)
+    await writeJson(join(runtimePath, 'runtime.json'), {
+      id: `${source}--test`,
+      source,
+      version: 'test',
+      kind: 'wine',
+      path: runtimePath,
+      bin: runtimeBin,
+      installedAt: '2026-01-01T00:00:00.000Z',
+      release: { date: '2026-01-01', download: 'https://example.invalid/wine', notesUrl: 'https://example.invalid' }
+    } satisfies InstalledRuntime)
+
+    await mkdir(join(componentPath, 'x64'), { recursive: true })
+    await writeFile(join(componentPath, 'x64', 'd3d11.dll'), 'component-dll')
+    const component = {
+      name: componentName,
+      version: 'test',
+      path: componentPath,
+      installedAt: '2026-01-01T00:00:00.000Z',
+      release: {
+        date: '2026-01-01',
+        download: 'https://example.invalid/component',
+        notesUrl: 'https://example.invalid'
+      }
+    } satisfies InstalledComponent
+    await writeJson(join(componentPath, 'component.json'), component)
+
+    const container = newContainer('removal', testDefaults, paths)
+    container.runtime = { source, version: 'test' }
+    container.components.dxvk = { enabled: false, version: 'test' }
+    await mkdir(join(container.prefix, 'drive_c', 'windows', 'system32'), { recursive: true })
+    await writeFile(join(container.prefix, 'system.reg'), 'WINE REGISTRY Version 2\n')
+    await writeFile(join(container.prefix, 'drive_c', 'windows', 'system32', 'd3d11.dll'), 'builtin-dll')
+    await applyDllComponent(component, container.prefix)
+    const marker = join(container.prefix, `current_${componentName}`)
+    await writeFile(marker, 'test\n')
+    await mkdir(dirname(join(paths.containers, container.name, 'container.json')), { recursive: true })
+    await saveContainer(container, paths)
+
+    await prepareContainer(container, paths)
+
+    assert.equal(existsSync(marker), true)
+    assert.equal(
+      await readFile(join(container.prefix, 'drive_c', 'windows', 'system32', 'd3d11.dll'), 'utf8'),
+      'component-dll'
+    )
+    assert.match(await readFile(commandLog, 'utf8'), /reg delete .*DllOverrides \/v d3d11 \/f/u)
+
+    await writeFile(commandLog, '')
+    container.components.dxvk.enabled = true
+    await prepareContainer(container, paths)
+    assert.match(await readFile(commandLog, 'utf8'), /reg add .*DllOverrides \/v d3d11 \/d native,builtin \/f/u)
+    assert.equal(await readFile(marker, 'utf8'), 'test\n')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('settings path parsing preserves JSON values', () => {
@@ -210,9 +324,10 @@ test('per-game JSONC overrides are created from the template and apply without c
     assert.equal(loaded.overrides.launch?.environment?.DXVK_ASYNC, '1')
 
     const original = newContainer('base', testDefaults, paths)
+    original.runtime.source = process.platform === 'darwin' ? 'wine-staging-macos' : 'wine-lutris'
     const effective = applyGameOverrides(original, loaded.overrides)
     assert.equal(effective.components.dxvk.version, '2.4')
-    assert.equal(effective.components.dxvkNvapi.enabled, true)
+    assert.equal(effective.components.dxvkNvapi.enabled, process.platform !== 'darwin')
     assert.equal(effective.launch.enableHdr, true)
     assert.equal(effective.launch.dxvkFrameRate, 60)
     assert.equal(effective.launch.environment.DXVK_ASYNC, '1')
@@ -706,7 +821,7 @@ test('build completes a partial config.json into a portable container definition
     assert.equal(container.runtime.source, 'ge-proton')
     assert.equal(container.runtime.version, 'custom-version')
     assert.equal(container.components.dxvk.enabled, false)
-    assert.equal(container.components.vkd3d.enabled, true)
+    assert.equal(container.components.vkd3d.enabled, false)
     assert.equal(container.launch.enableWayland, true)
     assert.equal(container.launch.enableFsync, true)
     assert.equal(container.launch.environment.DXVK_ASYNC, '1')

@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { containerComponentsSchema, partialContainerComponentsSchema } from './components.js'
+import {
+  containerComponentsSchema,
+  optionalContainerComponentsSchema,
+  partialContainerComponentsSchema
+} from './components.js'
 import { containerRuntimeRefSchema } from './runtime.js'
 
 export const launchOptionsSchema = z
@@ -32,6 +36,11 @@ export const containerConfigSchema = z
     launch: launchOptionsSchema
   })
   .strict()
+
+/** The on-disk form may omit components the selected runtime ignores. */
+export const storedContainerConfigSchema = containerConfigSchema.extend({
+  components: optionalContainerComponentsSchema
+})
 
 export const defaultsFileSchema = z
   .object({

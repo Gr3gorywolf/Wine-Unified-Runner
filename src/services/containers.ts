@@ -10,7 +10,7 @@ import {
   saveAppConfig,
   saveContainer
 } from './config.js'
-import { applyDllComponent, findInstalledComponent, installComponent } from './components.js'
+import { applyDllComponent, dllComponentFiles, findInstalledComponent, installComponent } from './components.js'
 import { initializePrefix, runRuntime, stopWineServer } from './launch.js'
 import { ensurePaths, getPaths } from './paths.js'
 import { ensureSharedUserProfile } from './profile.js'
@@ -112,6 +112,44 @@ async function registerNativeDlls(
   }
 }
 
+async function unregisterNativeDlls(
+  container: ContainerConfig,
+  runtime: InstalledRuntime,
+  dlls: string[]
+): Promise<void> {
+  for (const dll of dlls) {
+    await runRuntime(
+      container,
+      runtime,
+      ['reg', 'delete', 'HKEY_CURRENT_USER\\Software\\Wine\\DllOverrides', '/v', dll.replace(/\.dll$/i, ''), '/f'],
+      { protonVerb: 'run' }
+    ).catch(() => undefined)
+  }
+}
+
+const fallbackComponentDlls: Record<ContainerWineComponentRequest['name'], string[]> = {
+  dxvk: ['d3d8.dll', 'd3d9.dll', 'd3d10core.dll', 'd3d11.dll', 'dxgi.dll'],
+  'dxvk-macos': ['d3d9.dll', 'd3d10core.dll', 'd3d11.dll', 'dxgi.dll'],
+  'dxvk-nvapi': ['nvapi.dll', 'nvapi64.dll'],
+  vkd3d: ['d3d12.dll', 'd3d12core.dll']
+}
+
+async function componentRegistryDlls(
+  item: ContainerWineComponentRequest,
+  container: ContainerConfig,
+  paths: Paths
+): Promise<string[]> {
+  const marker = join(container.prefix, `current_${item.name}`)
+  if (existsSync(marker)) {
+    const version = (await readFile(marker, 'utf8')).trim()
+    const installed = version ? await findInstalledComponent(item.name, version, paths) : undefined
+    if (installed) {
+      return [...new Set([...fallbackComponentDlls[item.name], ...(await dllComponentFiles(installed))])]
+    }
+  }
+  return fallbackComponentDlls[item.name]
+}
+
 async function prepareWineComponents(
   container: ContainerConfig,
   runtime: InstalledRuntime,
@@ -125,7 +163,10 @@ async function prepareWineComponents(
   ]
   for (const item of requested) {
     const selected = container.components[item.selection]
-    if (!selected.enabled || ignoresComponent(runtime.source, item.name)) continue
+    if (!selected.enabled || ignoresComponent(runtime.source, item.name)) {
+      await unregisterNativeDlls(container, runtime, await componentRegistryDlls(item, container, paths))
+      continue
+    }
     const installed = await findInstalledComponent(item.name, selected.version, paths)
     const component =
       installed ||
@@ -137,10 +178,10 @@ async function prepareWineComponents(
         dependencyInstallOptions('component', item.name, selected.version, options)
       ))
     const marker = join(container.prefix, `current_${item.name}`)
-    if (existsSync(marker) && (await readFile(marker, 'utf8')).trim() === component.version) continue
-    const dlls = await applyDllComponent(component, container.prefix)
+    const current = existsSync(marker) && (await readFile(marker, 'utf8')).trim() === component.version
+    const dlls = current ? await dllComponentFiles(component) : await applyDllComponent(component, container.prefix)
     await registerNativeDlls(container, runtime, dlls)
-    await writeFile(marker, `${component.version}\n`, 'utf8')
+    if (!current) await writeFile(marker, `${component.version}\n`, 'utf8')
   }
 }
 

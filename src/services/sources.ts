@@ -58,7 +58,7 @@ export const runtimeSources: Record<RuntimeSource, RuntimeSourceInfo> = {
     apiUrl: 'https://api.github.com/repos/Heroic-Games-Launcher/wine-crossover/releases',
     kind: 'crossover',
     platforms: ['darwin'],
-    ignoredComponents: ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxvk-macos', 'dxmt']
+    ignoredComponents: ['dxvk', 'dxvk-nvapi', 'vkd3d', 'dxmt']
   },
   'wine-staging-macos': {
     id: 'wine-staging-macos',

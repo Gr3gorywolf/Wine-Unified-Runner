@@ -2,13 +2,14 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { ensurePaths, getPaths } from './paths.js'
-import { isRuntimeSource } from './sources.js'
+import { ignoresComponent, isRuntimeSource } from './sources.js'
 import {
   appConfigSchema,
   containerConfigSchema,
   containerManifestSchema,
   containerRuntimeRefSchema,
-  defaultsFileSchema
+  defaultsFileSchema,
+  storedContainerConfigSchema
 } from '../schemas/index.js'
 import {
   applyGameOverrideAssignments,
@@ -32,6 +33,7 @@ export { applyGameOverrideExpressions, GAME_OVERRIDE_FILE, parseGameOverrides } 
 import type {
   AppConfig,
   ComponentSelection,
+  ComponentName,
   ContainerConfig,
   ContainerComponents,
   ContainerRuntimeRef,
@@ -41,9 +43,64 @@ import type {
   RuntimeSource
 } from '../types/index.js'
 
+const componentRuntimeNames: Record<keyof ContainerComponents, ComponentName> = {
+  dxvk: process.platform === 'darwin' ? 'dxvk-macos' : 'dxvk',
+  dxvkNvapi: 'dxvk-nvapi',
+  vkd3d: 'vkd3d',
+  eacRuntime: 'eac-runtime',
+  battleyeRuntime: 'battleye-runtime'
+}
+
+function disabledComponent(): ComponentSelection {
+  return { enabled: false, version: 'latest' }
+}
+
+/**
+ * Runtime-owned components cannot be configured by a container. Keeping an
+ * explicit disabled value in memory lets all launch code use one complete
+ * shape, while serialization omits the selection altogether.
+ */
+export function ignoreRuntimeOwnedComponents(container: ContainerConfig): void {
+  for (const [key, name] of Object.entries(componentRuntimeNames) as Array<
+    [keyof ContainerComponents, ComponentName]
+  >) {
+    if (ignoresComponent(container.runtime.source, name)) container.components[key] = disabledComponent()
+  }
+}
+
+function storedContainer(container: ContainerConfig): Record<string, unknown> {
+  const stored = structuredClone(container) as ContainerConfig & { components: Partial<ContainerComponents> }
+  for (const [key, name] of Object.entries(componentRuntimeNames) as Array<
+    [keyof ContainerComponents, ComponentName]
+  >) {
+    if (ignoresComponent(stored.runtime.source, name)) delete stored.components[key]
+  }
+  return stored as unknown as Record<string, unknown>
+}
+
+function loadedContainerComponents(
+  components: Partial<ContainerComponents>,
+  runtime: ContainerRuntimeRef,
+  origin: string
+): ContainerComponents {
+  const result = {} as ContainerComponents
+  for (const [key, name] of Object.entries(componentRuntimeNames) as Array<
+    [keyof ContainerComponents, ComponentName]
+  >) {
+    if (ignoresComponent(runtime.source, name)) {
+      result[key] = disabledComponent()
+      continue
+    }
+    const selection = components[key]
+    if (!selection) throw new Error(`Container component "${key}" is missing in ${origin}.`)
+    result[key] = selection
+  }
+  return result
+}
+
 export function defaultSourceForPlatform(): RuntimeSource {
   if (process.platform === 'darwin') {
-    return process.arch === 'arm64' ? 'wine-crossover' : 'wine-staging-macos'
+    return 'wine-crossover'
   }
   return 'ge-proton'
 }
@@ -201,6 +258,7 @@ export function applyGameOverrides(container: ContainerConfig, overrides: GameOv
     Object.assign(result.launch, launch)
     if (environment) result.launch.environment = { ...result.launch.environment, ...environment }
   }
+  ignoreRuntimeOwnedComponents(result)
   validateContainer(result, GAME_OVERRIDE_FILE)
   return result
 }
@@ -213,22 +271,26 @@ export async function loadContainer(name: string, paths = getPaths()): Promise<C
   const file = containerFile(paths, name)
   if (!existsSync(file))
     throw new Error(`Container "${name}" does not exist. Create it with: wur container create --name ${name}`)
-  const raw = await readJson<ContainerConfig>(file)
+  const unvalidated = await readJson<Record<string, unknown>>(file)
+  const runtime = declaredRuntime(unvalidated.runtime, file)
+  const raw = parseWithSchema(storedContainerConfigSchema, { ...unvalidated, runtime }, file)
   // Older container files cached installed-runtime implementation details.
   // A container is declarative: only source/version belong in its JSON. Keep
   // reading old files, but discard those derived fields before using them.
   const container: ContainerConfig = {
     ...raw,
-    runtime: declaredRuntime(raw.runtime, file)
+    runtime,
+    components: loadedContainerComponents(raw.components, runtime, file)
   }
   return parseWithSchema(containerConfigSchema, container, file)
 }
 
 export async function saveContainer(container: ContainerConfig, paths = getPaths()): Promise<void> {
   container.runtime = declaredRuntime(container.runtime, `container ${container.name}`)
+  ignoreRuntimeOwnedComponents(container)
   parseWithSchema(containerConfigSchema, container, `container ${container.name}`)
   container.updatedAt = new Date().toISOString()
-  await writeJson(containerFile(paths, container.name), container)
+  await writeJson(containerFile(paths, container.name), storedContainer(container))
 }
 
 /**
@@ -324,6 +386,7 @@ export function resolveContainerManifest(
       resolved.launch.environment = { ...resolved.launch.environment, ...launch.environment }
     }
   }
+  ignoreRuntimeOwnedComponents(resolved as ContainerConfig)
   return resolved
 }
 
@@ -341,7 +404,7 @@ export function newContainer(name: string, defaults: DefaultsFile, paths: Paths)
   assertContainerName(name)
   const base = structuredClone(defaults.container)
   const now = new Date().toISOString()
-  return {
+  const container: ContainerConfig = {
     ...base,
     schemaVersion: 1,
     name,
@@ -349,6 +412,8 @@ export function newContainer(name: string, defaults: DefaultsFile, paths: Paths)
     updatedAt: now,
     prefix: join(containerDirectory(paths, name), 'prefix')
   }
+  ignoreRuntimeOwnedComponents(container)
+  return container
 }
 
 export function parseRuntimeReference(input: string): { source: RuntimeSource; version: string } {

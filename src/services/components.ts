@@ -222,16 +222,42 @@ export async function removeComponent(
   return { name: installed.name, version: installed.version, path: target }
 }
 
-/** Copies a downloaded DXVK-family component into a Wine prefix. Registry overrides are applied by the caller. */
-export async function applyDllComponent(component: InstalledComponent, prefix: string): Promise<string[]> {
+function safeDllName(name: unknown): name is string {
+  return typeof name === 'string' && /^[A-Za-z0-9._+-]+\.dll$/iu.test(name)
+}
+
+async function dllFiles(directory: string | undefined): Promise<string[]> {
+  if (!directory) return []
+  return (await readdir(directory, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && safeDllName(entry.name))
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right))
+}
+
+async function componentDllDirectories(component: InstalledComponent): Promise<{
+  x64?: string
+  x32?: string
+  files: string[]
+}> {
   const x64 = await findDirectory(component.path, ['x64'])
   const x32 = await findDirectory(component.path, component.name === 'vkd3d' ? ['x86', 'x32'] : ['x32', 'x86'])
   if (!x64 && !x32)
     throw new Error(`${component.name} ${component.version} does not contain x64, x32, or x86 DLL directories.`)
+  return { x64, x32, files: [...new Set([...(await dllFiles(x64)), ...(await dllFiles(x32))])] }
+}
+
+/** Lists every registry override owned by one downloaded DLL component. */
+export async function dllComponentFiles(component: InstalledComponent): Promise<string[]> {
+  return (await componentDllDirectories(component)).files
+}
+
+/** Copies a downloaded DXVK-family component into a Wine prefix. Registry overrides are applied by the caller. */
+export async function applyDllComponent(component: InstalledComponent, prefix: string): Promise<string[]> {
+  const { x64, x32, files } = await componentDllDirectories(component)
   const windows = join(prefix, 'drive_c', 'windows')
-  const copied = await Promise.all([
+  await Promise.all([
     copyDllDirectory(x64, join(windows, 'system32')),
     copyDllDirectory(x32, join(windows, 'syswow64'))
   ])
-  return [...new Set(copied.flat())]
+  return files
 }
